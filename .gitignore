@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.local
+*.log
+.DS_Store
+.env.backup
+dist/
+
+# Exports de leads (données personnelles)
+leads*.csv

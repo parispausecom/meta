@@ -1,0 +1,36 @@
+{
+  "name": "pausecom-meta-automation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Publication Instagram + leads Instant Forms -> Google Sheets (Graph API + compte de service)",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "setup:meta": "node --import tsx src/setup-meta.ts",
+    "doctor": "node --import tsx src/doctor.ts",
+    "forms": "node --import tsx src/list-forms.ts",
+    "backfill": "node --import tsx src/backfill.ts",
+    "post": "node --import tsx src/post-to-instagram.ts",
+    "post:live": "node --import tsx src/post-to-instagram.ts --publish",
+    "start": "node dist/src/server.js",
+    "dev": "node --import tsx --watch src/server.ts",
+    "meta": "bash scripts/meta-links.sh",
+    "inventory": "node --import tsx src/inventory.ts"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "google-auth-library": "^10.9.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.4.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}

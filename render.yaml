@@ -1,0 +1,33 @@
+# Blueprint Render — serveur webhook leads Meta → Google Sheets.
+# Déploiement : https://render.com → New → Blueprint → connecter ce dépôt.
+# Les variables marquées sync:false se saisissent à la main dans le dashboard
+# (ce sont des secrets : jamais dans le dépôt).
+services:
+  - type: web
+    name: pausecom-meta-webhook
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: META_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: META_VERIFY_TOKEN
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_PAGE_ID
+        sync: false
+      - key: GRAPH_API_VERSION
+        value: v26.0
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: GOOGLE_SPREADSHEET_ID
+        sync: false
+      - key: GOOGLE_SHEET_RANGE
+        value: Leads!A:G

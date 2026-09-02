@@ -1,0 +1,110 @@
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+import { spawn, type ChildProcess } from 'node:child_process';
+
+const PORT = 3900 + Math.floor(Math.random() * 90);
+const BASE = `http://127.0.0.1:${PORT}`;
+const VERIFY_TOKEN = 'token_de_test';
+const APP_SECRET = 'secret_de_test';
+
+let server: ChildProcess | undefined;
+
+/** Signe un corps de requête comme le ferait Meta. */
+function sign(body: string): string {
+  return 'sha256=' + crypto.createHmac('sha256', APP_SECRET).update(body).digest('hex');
+}
+
+/** Construit une notification leadgen valide. */
+function leadgenBody(leadId: string): string {
+  return JSON.stringify({
+    object: 'page',
+    entry: [{ id: '1', changes: [{ field: 'leadgen', value: { leadgen_id: leadId } }] }],
+  });
+}
+
+before(async () => {
+  server = spawn('node', ['--import', 'tsx', 'src/server.ts'], {
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      META_VERIFY_TOKEN: VERIFY_TOKEN,
+      META_APP_SECRET: APP_SECRET,
+      META_PAGE_ACCESS_TOKEN: 'jeton_factice',
+      GOOGLE_SPREADSHEET_ID: 'sheet_factice',
+    },
+    stdio: 'ignore',
+  });
+
+  // Attendre que le port réponde plutôt que de parier sur un délai fixe.
+  for (let i = 0; i < 150; i++) {
+    try {
+      await fetch(`${BASE}/health`);
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  throw new Error("le serveur n'a pas démarré");
+});
+
+after(() => server?.kill());
+
+test('/health répond', async () => {
+  const res = await fetch(`${BASE}/health`);
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true });
+});
+
+test('la vérification Meta renvoie le challenge sur bon token', async () => {
+  const url = `${BASE}/webhook?hub.mode=subscribe&hub.verify_token=${VERIFY_TOKEN}&hub.challenge=CHAL`;
+  const res = await fetch(url);
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), 'CHAL');
+});
+
+test('la vérification est refusée sur mauvais token', async () => {
+  const url = `${BASE}/webhook?hub.mode=subscribe&hub.verify_token=faux&hub.challenge=CHAL`;
+  assert.equal((await fetch(url)).status, 403);
+});
+
+test('un POST sans signature est rejeté', async () => {
+  const res = await fetch(`${BASE}/webhook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{"object":"page"}',
+  });
+  assert.equal(res.status, 401);
+});
+
+test('un POST à signature falsifiée est rejeté', async () => {
+  const res = await fetch(`${BASE}/webhook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Hub-Signature-256': 'sha256=deadbeef' },
+    body: '{"object":"page"}',
+  });
+  assert.equal(res.status, 401);
+});
+
+test('un POST correctement signé est accepté', async () => {
+  const body = leadgenBody('L1');
+  const res = await fetch(`${BASE}/webhook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Hub-Signature-256': sign(body) },
+    body,
+  });
+  assert.equal(res.status, 200);
+});
+
+test('le serveur acquitte avant de traiter, donc répond vite', async () => {
+  const body = leadgenBody('L2');
+  const started = Date.now();
+  await fetch(`${BASE}/webhook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Hub-Signature-256': sign(body) },
+    body,
+  });
+  // Meta abandonne au-delà de quelques secondes : l'appel à la Graph API ne
+  // doit jamais retarder l'accusé de réception.
+  assert.ok(Date.now() - started < 1000, 'la réponse doit être immédiate');
+});
