@@ -20,7 +20,8 @@
     "start": "node dist/src/server.js",
     "dev": "node --import tsx --watch src/server.ts",
     "meta": "bash scripts/meta-links.sh",
-    "inventory": "node --import tsx src/inventory.ts"
+    "inventory": "node --import tsx src/inventory.ts",
+    "audit": "node --import tsx src/audit.ts"
   },
   "dependencies": {
     "dotenv": "^17.4.2",

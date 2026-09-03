@@ -8,3 +8,7 @@ dist/
 
 # Exports de leads (données personnelles)
 leads*.csv
+
+# Rapport d'audit (donnees personnelles + inventaire des acces)
+audit-meta.html
+.env.pre-*

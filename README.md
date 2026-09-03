@@ -47,6 +47,7 @@ et compilé par `tsc` pour la production.
 | `npm test` | 19 tests |
 | `npm start` | démarre le serveur compilé |
 | `npm run dev` | serveur en rechargement automatique |
+| `npm run audit` | audit des accès Meta → rapport HTML ouvert dans le navigateur |
 
 Arborescence :
 
@@ -223,6 +224,25 @@ nécessaire. **Meta ne conserve les leads que 90 jours** : le compteur
 `leads_count` d'un formulaire continue d'annoncer les plus anciens, mais
 l'API ne les renvoie plus et rien ne permet de les récupérer. C'est la seule
 vraie raison de mettre le webhook en service sans tarder.
+
+## Auditer ce que les jetons permettent
+
+`npm run audit` interroge une à une toutes les ressources que l'app pourrait
+vouloir lire — Page, Instagram, leads, messagerie, publicité, Business Manager —
+et écrit `audit-meta.html`, un rapport autonome ouvert dans le navigateur : pour
+chaque ressource, la réponse brute quand elle passe, le message d'erreur exact
+quand elle refuse, et en fin de page la liste de ce qui reste inaccessible avec
+l'autorisation qui manque.
+
+```bash
+npm run audit                      # rapport + ouverture du navigateur
+npm run audit -- --no-open         # rapport seul
+npm run audit -- --out=/tmp/a.html # autre destination
+```
+
+Toutes les sondes sont des `GET` : rien n'est modifié côté Meta. Les jetons sont
+masqués dans le rapport, mais celui-ci contient des données personnelles (leads,
+conversations) — il est exclu du dépôt par `.gitignore`.
 
 ## Endpoints du serveur
 
