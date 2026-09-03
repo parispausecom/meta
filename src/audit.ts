@@ -506,10 +506,9 @@ const trunc = (s: unknown, n: number) => {
 
 /** Autorisations que l'ancien jeton n'avait pas : ce qu'elles ouvrent est signalé « nouveau ». */
 const NEW_SCOPES = new Set([
-  'instagram_content_publish',
-  'pages_read_user_content',
-  'pages_manage_posts',
-  'catalog_management',
+  'business_management',
+  'instagram_manage_comments',
+  'instagram_manage_messages',
 ]);
 
 interface Ctx {
@@ -584,26 +583,34 @@ function tabOverview(c: Ctx): string {
     .filter(Boolean)
     .join('');
 
+  const mentions = c.data('Mentions et identifications')?.data ?? [];
+  const businesses = c.data('Business Managers')?.data ?? [];
+  const dm = c.by('Conversations Instagram');
+
   const gains = [
     {
-      scope: 'instagram_content_publish',
-      titre: 'Publication Instagram',
-      quoi: `Le quota répond : ${quota?.quota_usage ?? 0} publication(s) utilisée(s) sur ${quota?.config?.quota_total ?? '?'} par 24 h. <code>npm run post:live</code> peut désormais publier — l'ancien jeton en était incapable.`,
+      scope: 'instagram_manage_comments',
+      titre: 'Mentions et identifications',
+      quoi: `${mentions.length} publication(s) de tiers où le compte est identifié deviennent lisibles. La même autorisation permet de répondre aux commentaires et d'en masquer.`,
     },
     {
-      scope: 'pages_read_user_content',
-      titre: 'Contenu des visiteurs',
-      quoi: `Le fil complet de la Page (${c.data('Fil complet (feed)')?.data?.length ?? 0} entrées) et les avis (${ratings.length}) deviennent lisibles : posts de tiers, recommandations, textes des avis.`,
+      scope: 'business_management',
+      titre: 'Portefeuille Business',
+      quoi: businesses.length
+        ? `${businesses.length} portefeuille(s) visible(s) : ${businesses.map((b: any) => esc(b.name)).join(', ')}.`
+        : "L'appel passe enfin, et il répond <strong>zéro portefeuille</strong> : aucun Business portfolio n'existe pour Pause-Com. Tous les actifs (Page, Instagram, compte publicitaire) sont rattachés à un compte personnel. C'est ce qu'il faut créer sur business.facebook.com avant d'espérer catalogues et jetons System User.",
     },
     {
-      scope: 'pages_manage_posts',
-      titre: 'Écriture sur la Page',
-      quoi: "Droit de publier, modifier et supprimer des posts sur la Page Facebook. Aucune donnée à lire ici : c'est une capacité d'écriture, disponible pour une future automatisation.",
+      scope: 'instagram_manage_messages',
+      titre: 'Messages directs Instagram',
+      quoi: dm?.ok
+        ? `${(dm.data as any)?.data?.length ?? 0} conversation(s) Instagram lisibles.`
+        : `L'autorisation est acceptée — le refus <code>#230</code> a disparu — mais Meta répond désormais une erreur de son côté : « ${esc(dm?.error?.message ?? '')} ». Rien à corriger dans le jeton.`,
     },
     {
-      scope: 'catalog_management',
-      titre: 'Catalogue produits',
-      quoi: "Accordé, mais inexploitable seul : Meta exige <code>business_management</code> pour atteindre les catalogues via <code>me/businesses</code>. C'est aujourd'hui la seule permission accordée qui ne donne rien.",
+      scope: 'acquis précédemment',
+      titre: 'Déjà en place',
+      quoi: `Publication Instagram (quota ${quota?.quota_usage ?? 0}/${quota?.config?.quota_total ?? '?'}), fil complet de la Page (${c.data('Fil complet (feed)')?.data?.length ?? 0} entrées), avis (${ratings.length}) et droit d'écriture sur la Page.`,
     },
   ]
     .map(
@@ -694,6 +701,17 @@ function tabInstagram(c: Ctx): string {
   const flat = comments.flatMap((m: any) =>
     (m.comments?.data ?? []).map((x: any) => ({ ...x, media: m.id }))
   );
+  const mentionsProbe = c.by('Mentions et identifications');
+  const mentions = (mentionsProbe?.data as any)?.data ?? [];
+  const mentionRows = mentions
+    .map(
+      (m: any) =>
+        `<tr><td class="date">${esc(dateFr(m.timestamp))}</td><td class="nom">@${esc(m.username)}</td>
+         <td>${esc(trunc(m.caption, 200))}</td>
+         <td>${m.permalink ? `<a href="${esc(m.permalink)}" target="_blank" rel="noopener">voir</a>` : '—'}</td></tr>`
+    )
+    .join('');
+
   const commentRows = flat
     .slice(0, 60)
     .map(
@@ -714,7 +732,13 @@ function tabInstagram(c: Ctx): string {
     }
     <div class="postgrid">${grid || '<div class="pad muted">Aucune publication.</div>'}</div>
     <h2>Commentaires reçus (${flat.length})</h2>
-    ${table(['Date', 'Auteur', 'Commentaire'], commentRows, 600)}`;
+    ${table(['Date', 'Auteur', 'Commentaire'], commentRows, 600)}
+    <h2>Mentions et identifications (${mentions.length}) ${badgeNew}</h2>
+    ${
+      mentionsProbe?.ok
+        ? table(['Date', 'Compte', 'Légende', ''], mentionRows, 700)
+        : `<div class="na"><div class="nat">Non récupérable</div><div class="naw">${esc(mentionsProbe?.error?.message ?? '')}</div></div>`
+    }`;
 }
 
 function tabPage(c: Ctx): string {
@@ -1015,23 +1039,24 @@ function tabMissing(c: Ctx): string {
 
   const manual = [
     {
-      titre: 'Business Manager et catalogues produits',
-      pourquoi: "L'app n'a pas <code>business_management</code> : <code>me/businesses</code> répond « Missing Permission », ce qui rend aussi <code>catalog_management</code> inutilisable.",
+      titre: 'Catalogues produits — aucun portefeuille à interroger',
+      pourquoi:
+        "<code>business_management</code> est désormais accordé et l'appel passe, mais <code>me/businesses</code> répond zéro : aucun portefeuille Business n'existe. Sans lui, <code>catalog_management</code> reste sans objet.",
       faire: [
-        'Ajouter <code>business_management</code> dans Utilisation de l’API sur le Dashboard Meta',
-        'Régénérer le jeton, puis <code>npm run audit</code>',
-        'Bonus : un jeton de System User devient alors possible — il survit à un changement de mot de passe',
+        'Créer le portefeuille sur <strong>business.facebook.com</strong> — pas sur developers.facebook.com',
+        'Y rattacher la Page, le compte Instagram et le compte publicitaire',
+        'Rattacher l’app au portefeuille, puis relancer <code>npm run audit</code>',
+        'C’est aussi le préalable à un jeton System User, qui ne dépend plus d’un compte personnel',
       ],
     },
     {
-      titre: 'Messages directs Instagram',
-      pourquoi: "L'API refuse la plateforme <code>instagram</code> sur <code>/conversations</code> sans <code>instagram_manage_messages</code>.",
-      faire: ['Ajouter <code>instagram_manage_messages</code>', 'Régénérer le jeton'],
-    },
-    {
-      titre: 'Mentions et identifications Instagram',
-      pourquoi: "<code>/tags</code> renvoie « Application does not have permission » : il faut <code>instagram_manage_comments</code>, qui ouvre aussi la réponse aux commentaires.",
-      faire: ['Ajouter <code>instagram_manage_comments</code>', 'Régénérer le jeton'],
+      titre: 'Messages directs Instagram — erreur côté Meta',
+      pourquoi:
+        "L'autorisation <code>instagram_manage_messages</code> est acceptée (le refus <code>#230</code> a disparu), mais l'endpoint répond une erreur interne, y compris avec <code>limit=1</code> et un seul champ. Le problème n'est plus dans le jeton.",
+      faire: [
+        'Vérifier que la boîte de réception Instagram est bien connectée à celle de la Page',
+        'Réessayer plus tard : ce type d’erreur est souvent transitoire chez Meta',
+      ],
     },
     {
       titre: 'Leads de plus de 90 jours',
