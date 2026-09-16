@@ -1,0 +1,71 @@
+# Filet de sécurité de l'automatisation Meta → Google Sheets.
+#
+# Le webhook écrit chaque lead en temps réel. Ce workflow rattrape ce qu'il
+# aurait manqué (service Render endormi, Meta qui ne livre pas, panne de
+# jeton) : toutes les 30 minutes, il compare Meta et le Sheet et n'ajoute que
+# les leads absents. Il vérifie ensuite la production et échoue si un contrôle
+# est au rouge — GitHub prévient alors par e-mail.
+#
+# 30 minutes : le dépôt est privé, et GitHub facture chaque exécution une
+# minute au moins. 48 exécutions par jour tiennent dans les 2 000 minutes
+# gratuites mensuelles ; toutes les 15 minutes les dépasseraient.
+
+name: Synchronisation des leads
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Deux synchronisations simultanées pourraient écrire le même lead deux fois.
+concurrency:
+  group: sync-leads
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      META_PAGE_ACCESS_TOKEN: ${{ secrets.META_PAGE_ACCESS_TOKEN }}
+      META_PAGE_ID: ${{ vars.META_PAGE_ID }}
+      GRAPH_API_VERSION: ${{ vars.GRAPH_API_VERSION }}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_SPREADSHEET_ID: ${{ secrets.GOOGLE_SPREADSHEET_ID }}
+      GOOGLE_SHEET_RANGE: ${{ vars.GOOGLE_SHEET_RANGE }}
+      DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+      PROD_URL: ${{ vars.PROD_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Rattraper les leads absents du Sheet
+        run: |
+          set -o pipefail
+          npm run -s backfill 2>&1 | tee backfill.log
+          {
+            echo '### Synchronisation Meta → Sheet'
+            echo '```'
+            grep -vE '^\s*$' backfill.log | tail -n 25
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Vérifier la production
+        run: |
+          set -o pipefail
+          npm run -s status -- --fresh 2>&1 | tee status.log
+          {
+            echo '### État de la production'
+            echo '```'
+            sed -n '1,14p' status.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
