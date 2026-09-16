@@ -165,7 +165,7 @@ test('les pages légales exigées par Meta sont publiques', async () => {
 
 test('un événement Instagram signé fait avancer le signal de fraîcheur', async () => {
   const auth = { authorization: basic('pausecom', DASHBOARD_PASSWORD) };
-  const before = (await (await fetch(`${BASE}/api/version`, { headers: auth })).json()).version;
+  const before = ((await (await fetch(`${BASE}/api/version`, { headers: auth })).json()) as { version: number }).version;
   await new Promise((r) => setTimeout(r, 5));
   const body = JSON.stringify({
     object: 'instagram',
@@ -178,7 +178,7 @@ test('un événement Instagram signé fait avancer le signal de fraîcheur', asy
   });
   assert.equal(res.status, 200);
   await new Promise((r) => setTimeout(r, 50));
-  const after = (await (await fetch(`${BASE}/api/version`, { headers: auth })).json()).version;
+  const after = ((await (await fetch(`${BASE}/api/version`, { headers: auth })).json()) as { version: number }).version;
   assert.notEqual(after, before);
 });
 
