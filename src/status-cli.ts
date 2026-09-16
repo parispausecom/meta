@@ -9,7 +9,7 @@
 import { spawn } from 'node:child_process';
 import { requireEnv, optionalEnv, runCli } from './lib/env.js';
 
-const PROD_URL = optionalEnv('PROD_URL', 'https://pausecom-meta.onrender.com').replace(/\/$/, '');
+const PROD_URL = optionalEnv('PROD_URL', 'https://pausecom-meta-webhook.onrender.com').replace(/\/$/, '');
 const args = process.argv.slice(2);
 
 if (args.includes('--open')) {

@@ -248,7 +248,7 @@ conversations) — il est exclu du dépôt par `.gitignore`.
 
 ## Suivre la production
 
-`https://pausecom-meta.onrender.com/dashboard` affiche en direct la santé de la
+`https://pausecom-meta-webhook.onrender.com/dashboard` affiche en direct la santé de la
 chaîne (jeton, abonnement Meta, Sheet, concordance Meta ↔ Sheet), les chiffres
 clés, les leads par mois, l'activité du webhook depuis le démarrage et les
 derniers leads. La page interroge Meta et le Sheet à chaque visite, avec un
