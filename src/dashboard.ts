@@ -351,6 +351,8 @@ dl.facts dt:last-of-type, dl.facts dd:last-of-type { border-bottom: 0; }
 footer { border-top: 1px solid var(--line); }
 .footer-inner { max-width: 1200px; margin: 0 auto; padding: 24px 20px 40px; color: var(--muted); font-size: 13px; display: flex; gap: 12px 24px; flex-wrap: wrap; justify-content: space-between; }
 footer p { margin: 0; }
+.footer-links { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.footer-links a { color: var(--ink); }
 ${businessCss}
 </style>
 </head>
@@ -487,7 +489,13 @@ ${renderBusiness(b)}
 <footer>
   <div class="footer-inner">
     <p>© ${new Date().getFullYear()} Pause-Com · Page privée : elle contient des données personnelles.</p>
-    <p>Données brutes : <a href="/api/status">/api/status</a> · <a href="/api/business">/api/business</a></p>
+    <nav aria-label="Informations légales">
+      <ul class="footer-links">
+        <li><a href="/confidentialite">Politique de confidentialité</a></li>
+        <li><a href="/suppression-des-donnees">Suppression des données</a></li>
+        <li><a href="/api/status">Données brutes</a></li>
+      </ul>
+    </nav>
   </div>
 </footer>
 

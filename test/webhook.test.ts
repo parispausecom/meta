@@ -189,3 +189,8 @@ test('les routes de détail refusent les identifiants invalides', async () => {
   assert.equal((await fetch(`${BASE}/api/leads/..%2Fme`, { headers: auth })).status, 400);
   assert.equal((await fetch(`${BASE}/api/business`)).status, 401);
 });
+
+test('les pages légales renvoient l’une vers l’autre', async () => {
+  const html = await (await fetch(`${BASE}/confidentialite`)).text();
+  assert.match(html, /href="\/suppression-des-donnees"/);
+});
