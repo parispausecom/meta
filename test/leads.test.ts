@@ -112,3 +112,14 @@ test('newRows trie du plus ancien au plus récent', () => {
 test('newRows garde un lead sans identifiant plutôt que de le perdre', () => {
   assert.equal(newRows([{ createdTime: 'T', fields: {} }], new Set()).length, 1);
 });
+
+test('reconnaît un identifiant de lead stocké en nombre par Google Sheets', async () => {
+  const { cellToId } = await import('../src/lib/sheets.js');
+  assert.equal(cellToId(1761578678529790), '1761578678529790');
+  assert.equal(cellToId(' 1398332465720097 '), '1398332465720097');
+  assert.equal(cellToId(''), '');
+  assert.equal(cellToId(undefined), '');
+  // Au-delà de 2^53 le nombre a déjà perdu des chiffres : mieux vaut ne rien
+  // reconnaître que confondre deux leads.
+  assert.equal(cellToId(2 ** 60), '');
+});

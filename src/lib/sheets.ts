@@ -21,7 +21,7 @@ interface AppendResponse {
 }
 
 interface ValuesResponse {
-  values?: string[][];
+  values?: Array<Array<string | number | boolean>>;
 }
 
 interface SpreadsheetResponse {
@@ -103,9 +103,11 @@ function googleError(err: unknown): string {
 /**
  * Ajoute des lignes à la fin de la plage indiquée.
  *
- * USER_ENTERED laisse Google interpréter les valeurs comme une saisie manuelle
- * (les dates deviennent des dates), et INSERT_ROWS insère plutôt que d'écraser
- * d'éventuelles lignes situées sous la plage.
+ * RAW écrit les valeurs telles quelles. USER_ENTERED les interprétait comme une
+ * saisie manuelle : `+33612345678` perdait son `+`, et un identifiant de lead
+ * finissant par 0 devenait le nombre `1,76158E+15` — que la relecture ne
+ * reconnaissait plus, ce qui cassait le dédoublonnage. INSERT_ROWS insère
+ * plutôt que d'écraser d'éventuelles lignes situées sous la plage.
  */
 export async function appendRows(rows: LeadRow[]): Promise<AppendResponse> {
   const spreadsheetId = requireEnv('GOOGLE_SPREADSHEET_ID', "L'ID présent dans l'URL du Sheet");
@@ -113,7 +115,7 @@ export async function appendRows(rows: LeadRow[]): Promise<AppendResponse> {
 
   const url =
     `${API}/${spreadsheetId}/values/${encodeURIComponent(range)}:append` +
-    `?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+    `?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
 
   try {
     const { data } = await auth().request<AppendResponse>({
@@ -131,6 +133,15 @@ export async function appendRows(rows: LeadRow[]): Promise<AppendResponse> {
 export const appendRow = (row: LeadRow): Promise<AppendResponse> => appendRows([row]);
 
 /**
+ * Normalise une cellule d'identifiant. Les lignes écrites avant le passage en
+ * RAW contiennent parfois un nombre : on le ramène à ses chiffres exacts.
+ */
+export function cellToId(cell: unknown): string {
+  if (typeof cell === 'number') return Number.isSafeInteger(cell) ? String(cell) : '';
+  return typeof cell === 'string' ? cell.trim() : '';
+}
+
+/**
  * Identifiants des leads déjà présents dans la feuille.
  *
  * C'est la seule protection contre les doublons : un import complet et le
@@ -143,12 +154,14 @@ export async function existingLeadIds(): Promise<Set<string>> {
 
   try {
     const { data } = await auth().request<ValuesResponse>({
-      url: `${API}/${spreadsheetId}/values/${encodeURIComponent(range)}`,
+      // UNFORMATTED_VALUE : un identifiant stocké en nombre revient en entier,
+      // pas sous la forme affichée `1,76158E+15`.
+      url: `${API}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=UNFORMATTED_VALUE`,
     });
 
     const ids = new Set<string>();
     for (const row of data.values ?? []) {
-      const id = row[ID_COLUMN];
+      const id = cellToId(row[ID_COLUMN]);
       if (id) ids.add(id);
     }
     return ids;
