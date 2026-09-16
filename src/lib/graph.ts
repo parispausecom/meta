@@ -278,3 +278,116 @@ export async function debugToken(
   if (d.error?.message) info.error = d.error.message;
   return info;
 }
+
+/** Une question d'Instant Form, avec ses choix possibles. */
+export interface FormQuestion {
+  key: string;
+  label?: string;
+  type?: string;
+  options?: Array<{ key: string; value: string }>;
+}
+
+export interface FormDetail {
+  id: string;
+  name?: string;
+  status?: string;
+  questions?: FormQuestion[];
+}
+
+// Un formulaire ne change pas d'une consultation à l'autre : inutile de le
+// relire pour chaque lead affiché.
+const formCache = new Map<string, Promise<FormDetail>>();
+
+export function fetchFormDetail(formId: string): Promise<FormDetail> {
+  let hit = formCache.get(formId);
+  if (!hit) {
+    hit = graphGet<FormDetail>(formId, { fields: 'id,name,status,questions' });
+    hit.catch(() => formCache.delete(formId));
+    formCache.set(formId, hit);
+  }
+  return hit;
+}
+
+/** Libellés français des questions standards, que Meta renvoie en anglais. */
+const STANDARD_LABELS: Record<string, string> = {
+  FULL_NAME: 'Nom complet',
+  FIRST_NAME: 'Prénom',
+  LAST_NAME: 'Nom',
+  EMAIL: 'E-mail',
+  PHONE: 'Téléphone',
+  COMPANY_NAME: 'Entreprise',
+  JOB_TITLE: 'Poste',
+  CITY: 'Ville',
+  ZIP: 'Code postal',
+  STREET_ADDRESS: 'Adresse',
+  WORK_EMAIL: 'E-mail professionnel',
+  WORK_PHONE_NUMBER: 'Téléphone professionnel',
+};
+
+export interface LeadAnswer {
+  question: string;
+  answer: string;
+  type?: string;
+}
+
+export interface LeadDetail {
+  id: string;
+  createdTime?: string;
+  platform?: string;
+  isOrganic?: boolean;
+  form?: { id: string; name?: string; status?: string };
+  campaign?: string;
+  adset?: string;
+  ad?: string;
+  answers: LeadAnswer[];
+}
+
+interface RawLeadDetail {
+  id: string;
+  created_time?: string;
+  field_data?: Array<{ name?: string; values?: string[] }>;
+  form_id?: string;
+  platform?: string;
+  is_organic?: boolean;
+  campaign_name?: string;
+  adset_name?: string;
+  ad_name?: string;
+}
+
+/**
+ * Détail complet d'un lead : chaque réponse accompagnée du libellé de sa
+ * question et, pour les choix multiples, du libellé du choix plutôt que de sa
+ * clé technique (`chef_d'entreprise` → « Chef d'entreprise »).
+ */
+export async function fetchLeadDetail(leadId: string): Promise<LeadDetail> {
+  const raw = await graphGet<RawLeadDetail>(leadId, {
+    fields: 'id,created_time,field_data,form_id,platform,is_organic,campaign_name,adset_name,ad_name',
+  });
+
+  const form = raw.form_id ? await fetchFormDetail(raw.form_id).catch(() => undefined) : undefined;
+  const byKey = new Map((form?.questions ?? []).map((q) => [q.key, q]));
+
+  const answers = (raw.field_data ?? []).map((f): LeadAnswer => {
+    const q = f.name ? byKey.get(f.name) : undefined;
+    const values = (f.values ?? []).map((v) => q?.options?.find((o) => o.key === v)?.value ?? v);
+    const question =
+      (q?.type && STANDARD_LABELS[q.type]) || q?.label || (f.name ?? '').replace(/_/g, ' ');
+    const answer: LeadAnswer = { question, answer: values.join(', ') };
+    if (q?.type) answer.type = q.type;
+    return answer;
+  });
+
+  const detail: LeadDetail = { id: raw.id, answers };
+  if (raw.created_time) detail.createdTime = raw.created_time;
+  if (raw.platform) detail.platform = raw.platform;
+  if (raw.is_organic !== undefined) detail.isOrganic = raw.is_organic;
+  if (raw.form_id) {
+    detail.form = { id: raw.form_id };
+    if (form?.name) detail.form.name = form.name;
+    if (form?.status) detail.form.status = form.status;
+  }
+  if (raw.campaign_name) detail.campaign = raw.campaign_name;
+  if (raw.adset_name) detail.adset = raw.adset_name;
+  if (raw.ad_name) detail.ad = raw.ad_name;
+  return detail;
+}

@@ -13,8 +13,8 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import express, { type Request, type Response } from 'express';
 import { requireEnv, optionalEnv, errorMessage } from './lib/env.js';
-import { fetchLead } from './lib/graph.js';
-import { appendRow, existingLeadIds } from './lib/sheets.js';
+import { fetchLead, fetchLeadDetail } from './lib/graph.js';
+import { appendRow, existingLeadIds, readLeadRows } from './lib/sheets.js';
 import { toRow } from './lib/leads.js';
 import { getStatus, recordActivity, invalidateStatus } from './lib/status.js';
 import { renderDashboard } from './dashboard.js';
@@ -74,6 +74,34 @@ app.get('/webhook', (req: Request, res: Response) => {
 
   console.warn('Échec de vérification du webhook (token invalide).');
   return res.sendStatus(403);
+});
+
+// Détail d'un lead : la ligne du Sheet, complétée par Meta tant que le lead
+// n'a pas été purgé (90 jours). Les deux sources sont lues indépendamment.
+app.get('/api/leads/:id', requireDashboardAuth, async (req: Request, res: Response) => {
+  const id = String(req.params.id ?? '');
+  if (!/^\d{5,25}$/.test(id)) {
+    res.status(400).json({ error: 'Identifiant de lead invalide.' });
+    return;
+  }
+
+  const [rows, meta] = await Promise.allSettled([readLeadRows(), fetchLeadDetail(id)]);
+  const row = rows.status === 'fulfilled' ? rows.value.find((r) => r[6] === id) : undefined;
+  const sheet = row
+    ? { date: row[0], name: row[1], email: row[2], phone: row[3], company: row[4], profile: row[5], id: row[6] }
+    : null;
+
+  if (!sheet && meta.status === 'rejected') {
+    res.status(404).json({ error: 'Lead introuvable dans le Sheet comme chez Meta.' });
+    return;
+  }
+  res.json({
+    id,
+    sheet,
+    sheetError: rows.status === 'rejected' ? errorMessage(rows.reason) : undefined,
+    meta: meta.status === 'fulfilled' ? meta.value : null,
+    metaError: meta.status === 'rejected' ? errorMessage(meta.reason) : undefined,
+  });
 });
 
 // --- Réception des leads ----------------------------------------------------
