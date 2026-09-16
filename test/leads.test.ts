@@ -123,3 +123,36 @@ test('reconnaît un identifiant de lead stocké en nombre par Google Sheets', as
   // reconnaître que confondre deux leads.
   assert.equal(cellToId(2 ** 60), '');
 });
+
+test('reconnaît les libellés d’un formulaire personnalisé à accents', () => {
+  const row = toRow({
+    id: 'LEAD_P',
+    createdTime: '2026-09-16T12:00:00+0000',
+    fields: {
+      'vous_êtes_?_': 'restaurateur',
+      "quel_type_d'accompagnement_cherchez-vous_?_": 'site web',
+      nom_complet: 'Léa Martin',
+      'nom_de_l’entreprise': 'Le Comptoir',
+      'numéro_de_téléphone': '+33611223344',
+      'e-mail': 'lea@example.com',
+    },
+  });
+  assert.deepEqual(row, [
+    '2026-09-16T12:00:00+0000',
+    'Léa Martin',
+    'lea@example.com',
+    '+33611223344',
+    'Le Comptoir',
+    'restaurateur',
+    'LEAD_P',
+  ]);
+});
+
+test('écarte les leads factices de l’outil de test Meta', async () => {
+  const { isTestLead } = await import('../src/lib/leads.js');
+  const test = { id: 'T', fields: { nom_complet: '<test lead: dummy data for nom_complet>', 'e-mail': 'test@meta.com' } };
+  const real = { id: 'R', fields: { full_name: 'Vrai Prospect' } };
+  assert.equal(isTestLead(test), true);
+  assert.equal(isTestLead(real), false);
+  assert.deepEqual(newRows([test, real], new Set()).map((r) => r[6]), ['R']);
+});

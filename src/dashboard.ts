@@ -7,7 +7,7 @@
  * l'actualisation automatique, sans jamais construire de HTML à partir de
  * données : tout passe par `textContent`.
  */
-import type { Status, Block } from './lib/status.js';
+import type { Status } from './lib/status.js';
 import type { LeadRow } from './types.js';
 
 const esc = (s: unknown) =>
@@ -35,13 +35,6 @@ const since = (iso: string) => {
   return `il y a ${Math.round(s / 86400)} j`;
 };
 
-const duration = (sec: number) => {
-  const d = Math.floor(sec / 86400);
-  const h = Math.floor((sec % 86400) / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  return d ? `${d} j ${h} h` : h ? `${h} h ${m} min` : `${m} min`;
-};
-
 /** « 2026-09 », calculé à l'heure de Paris. */
 const monthKey = (iso: string) => {
   const d = new Date(iso);
@@ -55,76 +48,6 @@ const prettify = (key: string) => {
   const t = key.replace(/_/g, ' ').trim();
   return t ? t[0]!.toUpperCase() + t.slice(1) : '';
 };
-
-// ── Contrôles de santé ────────────────────────────────────────────────────
-
-interface Check {
-  label: string;
-  ok: boolean;
-  detail: string;
-  help: string;
-}
-
-function checks(s: Status): Check[] {
-  const err = (b: Block<unknown>) => (b.ok ? '' : esc(b.error));
-  const sub = s.subscription;
-  return [
-    {
-      label: 'Serveur en ligne',
-      ok: true,
-      detail: `Actif depuis ${duration(s.server.uptimeSeconds)}`,
-      help: `Démarré le ${dateTime(s.server.startedAt)}. Sur le plan gratuit, Render met le service en veille après 15 minutes sans trafic : la première visite peut prendre jusqu'à une minute.`,
-    },
-    {
-      label: 'Jeton Meta',
-      ok: s.token.ok && s.token.data.valid,
-      detail: s.token.ok
-        ? `${s.token.data.valid ? 'Valide' : 'Invalide'} · ${s.token.data.neverExpires ? "n'expire pas" : `expire le ${dateTime(s.token.data.expiresAt)}`}`
-        : err(s.token),
-      help: s.token.ok
-        ? `Type ${esc(s.token.data.type ?? '?')}. Un jeton de Page issu d'un jeton utilisateur longue durée n'expire pas ; un jeton utilisateur, lui, expire et coupe la lecture des leads.`
-        : 'Remplacer <code>META_PAGE_ACCESS_TOKEN</code> sur Render par le jeton de Page de <code>.env</code>.',
-    },
-    {
-      label: 'Webhook Meta',
-      ok: sub.ok && sub.data.active && sub.data.fields.includes('leadgen') && sub.data.pointsHere !== false,
-      detail: sub.ok
-        ? sub.data.pointsHere === false
-          ? 'Meta envoie les leads à un autre serveur'
-          : `${sub.data.active ? 'Actif' : 'Inactif'} · champ ${esc(sub.data.fields.join(', ') || 'aucun')}`
-        : err(sub),
-      help: sub.ok
-        ? `Adresse déclarée chez Meta : <code>${esc(sub.data.callbackUrl ?? 'aucune')}</code>.${
-            sub.data.pointsHere === false
-              ? ' Elle ne correspond pas à ce serveur : les nouveaux leads ne passent pas par lui. Mettre à jour l’URL de rappel dans le Dashboard Meta (Webhooks → Page).'
-              : ''
-          }`
-        : 'Vérifier le produit Webhooks de l’app dans le Dashboard Meta.',
-    },
-    {
-      label: 'Page abonnée',
-      ok: sub.ok && sub.data.pageSubscribed,
-      detail: sub.ok ? (sub.data.pageSubscribed ? 'Pause-Com transmet ses leads' : 'Page non abonnée') : err(sub),
-      help: 'Sans cet abonnement, tout paraît configuré et aucun lead n’arrive. <code>npm run setup:meta</code> le rétablit.',
-    },
-    {
-      label: 'Google Sheet',
-      ok: s.sheet.ok,
-      detail: s.sheet.ok ? `« ${esc(s.sheet.data.title ?? '?')} » · ${s.sheet.data.total} leads` : err(s.sheet),
-      help: 'Le Sheet est la mémoire durable de l’automatisation : chaque lead reçu y est écrit une seule fois.',
-    },
-    {
-      label: 'Synchronisation',
-      ok: s.sync.ok && s.sync.data.missing.length === 0,
-      detail: s.sync.ok
-        ? s.sync.data.missing.length === 0
-          ? 'Meta et le Sheet concordent'
-          : `${s.sync.data.missing.length} lead(s) Meta absent(s) du Sheet`
-        : err(s.sync),
-      help: 'Compare les leads encore disponibles chez Meta (90 jours) aux lignes du Sheet. En cas d’écart : <code>npm run backfill</code>.',
-    },
-  ];
-}
 
 // ── Tendance mensuelle ────────────────────────────────────────────────────
 
@@ -150,8 +73,6 @@ function monthly(rows: LeadRow[]): Array<{ key: string; short: string; long: str
 // ── Page ──────────────────────────────────────────────────────────────────
 
 export function renderDashboard(s: Status, refreshSeconds: number): string {
-  const list = checks(s);
-  const failing = list.filter((c) => !c.ok).length;
   const rows = s.sheet.ok ? [...s.sheet.data.rows].sort((a, b) => +new Date(b[0]) - +new Date(a[0])) : [];
   const within = (days: number) => rows.filter((r) => Date.now() - +new Date(r[0]) < days * 86400_000).length;
   const last = rows[0];
@@ -164,7 +85,9 @@ export function renderDashboard(s: Status, refreshSeconds: number): string {
     ? `https://docs.google.com/spreadsheets/d/${encodeURIComponent(process.env.GOOGLE_SPREADSHEET_ID)}/edit`
     : '';
 
-  const statusText = s.healthy ? 'Automatisation opérationnelle' : `${failing || 1} point(s) à vérifier`;
+  // Le détail des contrôles relève du développement (`npm run status`) : la
+  // page n'en garde que la synthèse.
+  const statusText = s.healthy ? 'Automatisation opérationnelle' : 'Synchronisation à vérifier';
 
   // Les tuiles actionnables sont de vrais boutons : clavier et lecteur d'écran
   // les annoncent comme tels.
@@ -327,20 +250,6 @@ h2 { font: 600 22px/1.2 var(--serif); margin: 0; letter-spacing: -.005em; }
 
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
 
-/* Santé */
-.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-.check details { height: 100%; }
-.check summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; padding: 16px 18px; border-radius: var(--radius); min-height: 44px; }
-.check summary::-webkit-details-marker { display: none; }
-.check summary::after { content: ''; width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(45deg); margin-right: 4px; transition: transform .2s; }
-.check details[open] summary::after { transform: rotate(225deg); }
-.badge { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; }
-.badge.ok { background: var(--ok-soft); color: var(--ok); }
-.badge.ko { background: var(--ko-soft); color: var(--ko); }
-.check-title { display: block; font-weight: 600; }
-.check-detail { display: block; color: var(--muted); font-size: 13.5px; overflow-wrap: anywhere; }
-.check-help { margin: 0; padding: 0 18px 16px 66px; color: var(--muted); font-size: 13.5px; overflow-wrap: anywhere; }
-
 /* Chiffres */
 .tiles { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
 .tile { width: 100%; height: 100%; text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 18px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); font: inherit; }
@@ -403,7 +312,6 @@ tbody tr[data-id]:hover { background: var(--accent-soft); }
   .masthead-inner { padding: 22px 16px; gap: 16px; }
   .masthead img { height: 48px; }
   main { padding: 0 16px 48px; }
-  .check-help { padding-left: 18px; }
   .chart { height: 180px; gap: 2px; padding: 16px 8px 10px; }
   .bar-label { font-size: 10px; }
   table.stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
@@ -467,7 +375,6 @@ footer p { margin: 0; }
 
 <nav class="sections" aria-label="Sections du tableau de bord">
   <ul>
-    <li><a href="#sante">Santé</a></li>
     <li><a href="#chiffres">Chiffres clés</a></li>
     <li><a href="#tendance">Tendance</a></li>
     ${missing.length ? '<li><a href="#manquants">À rattraper</a></li>' : ''}
@@ -477,26 +384,6 @@ footer p { margin: 0; }
 </nav>
 
 <main id="contenu" tabindex="-1">
-  <section id="sante" aria-labelledby="h-sante">
-    <div class="section-head">
-      <h2 id="h-sante">Santé de la chaîne</h2>
-      <p class="section-note">Meta → serveur → Google Sheet · cliquer sur un contrôle pour le détail</p>
-    </div>
-    <ul class="checks">
-      ${list
-        .map(
-          (c) => `<li class="check card"><details>
-            <summary>
-              <span class="badge ${c.ok ? 'ok' : 'ko'}" aria-hidden="true">${c.ok ? '✓' : '!'}</span>
-              <span><span class="check-title">${esc(c.label)}<span class="sr-only"> : ${c.ok ? 'conforme' : 'à vérifier'}</span></span><span class="check-detail">${c.detail}</span></span>
-            </summary>
-            <p class="check-help">${c.help}</p>
-          </details></li>`
-        )
-        .join('')}
-    </ul>
-  </section>
-
   <section id="chiffres" aria-labelledby="h-chiffres">
     <div class="section-head">
       <h2 id="h-chiffres">Chiffres clés</h2>

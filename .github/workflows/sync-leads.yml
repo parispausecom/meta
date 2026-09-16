@@ -63,7 +63,8 @@ jobs:
       - name: Vérifier la production
         run: |
           set -o pipefail
-          npm run -s status -- --fresh 2>&1 | tee status.log
+          # Sans --fresh : le cache Meta du serveur (5 min) préserve le quota d'appels.
+          npm run -s status 2>&1 | tee status.log
           {
             echo '### État de la production'
             echo '```'

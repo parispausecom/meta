@@ -9,11 +9,12 @@
 import { graphGet, listLeadForms, fetchFormLeads, debugToken } from './graph.js';
 import { readLeadRows, checkAccess } from './sheets.js';
 import { errorMessage } from './env.js';
+import { isTestLead } from './leads.js';
 import type { LeadRow } from '../types.js';
 
 // ── Activité du webhook ───────────────────────────────────────────────────
 
-export type ActivityStatus = 'écrit' | 'déjà présent' | 'échec';
+export type ActivityStatus = 'écrit' | 'déjà présent' | 'test Meta ignoré' | 'échec';
 
 export interface Activity {
   at: string;
@@ -79,8 +80,20 @@ interface AppSubscription {
   fields?: Array<{ name?: string }>;
 }
 
+/**
+ * Les données Meta (jeton, abonnement, formulaires, leads) changent peu et
+ * coûtent cher : une app en mode Développement n'a droit qu'à quelques
+ * centaines d'appels par heure, et une page restée ouverte les épuisait. Elles
+ * sont gardées 5 minutes ; le Sheet, où arrivent les leads, est relu à chaque
+ * collecte.
+ */
+const META_TTL_MS = 5 * 60_000;
+let metaCache: { at: number; value: Promise<MetaBlocks> } | undefined;
+
+type MetaBlocks = [Status['token'], Status['subscription'], Block<{ forms: import('./graph.js').LeadForm[]; perForm: Array<{ form: import('./graph.js').LeadForm; leads: import('../types.js').Lead[] }> }>];
+
 /** Lit Meta et le Sheet, puis confronte les deux. */
-export async function collectStatus(): Promise<Status> {
+export async function collectStatus(fresh = false): Promise<Status> {
   const pageId = process.env.META_PAGE_ID ?? '';
   // Sans identifiant, les chemins Graph deviennent « /subscribed_apps » et Meta
   // répond une erreur obscure : on nomme la vraie cause.
@@ -94,7 +107,8 @@ export async function collectStatus(): Promise<Status> {
   const appId = async () =>
     process.env.META_APP_ID || (await graphGet<{ id: string }>('app', { fields: 'id' })).id;
 
-  const [token, subscription, sheet, metaLeads] = await Promise.all([
+  const readMeta = (): Promise<MetaBlocks> =>
+    Promise.all([
     block(async () => {
       if (!appSecret) throw new Error('META_APP_SECRET absent : inspection impossible');
       const info = await debugToken(pageToken, await appId(), appSecret);
@@ -136,13 +150,6 @@ export async function collectStatus(): Promise<Status> {
     }),
 
     block(async () => {
-      const [access, rows] = await Promise.all([checkAccess(), readLeadRows()]);
-      const result: { title?: string; total: number; rows: LeadRow[] } = { total: rows.length, rows };
-      if (access.title) result.title = access.title;
-      return result;
-    }),
-
-    block(async () => {
       needPage();
       const forms = await listLeadForms(pageId);
       // Seuls les formulaires qui annoncent des leads valent un appel.
@@ -151,6 +158,22 @@ export async function collectStatus(): Promise<Status> {
         withLeads.map(async (f) => ({ form: f, leads: await fetchFormLeads(f.id) }))
       );
       return { forms, perForm };
+    }),
+    ]) as Promise<MetaBlocks>;
+
+  if (fresh || !metaCache || Date.now() - metaCache.at > META_TTL_MS) {
+    const value = readMeta();
+    metaCache = { at: Date.now(), value };
+    value.catch(() => (metaCache = undefined));
+  }
+
+  const [[token, subscription, metaLeads], sheet] = await Promise.all([
+    metaCache.value,
+    block(async () => {
+      const [access, rows] = await Promise.all([checkAccess(), readLeadRows()]);
+      const result: { title?: string; total: number; rows: LeadRow[] } = { total: rows.length, rows };
+      if (access.title) result.title = access.title;
+      return result;
     }),
   ]);
 
@@ -161,7 +184,7 @@ export async function collectStatus(): Promise<Status> {
           forms: metaLeads.data.forms.length,
           activeForms: metaLeads.data.forms.filter((f) => f.status === 'ACTIVE').length,
           announced: metaLeads.data.forms.reduce((n, f) => n + (f.leads_count ?? 0), 0),
-          retrievable: metaLeads.data.perForm.reduce((n, p) => n + p.leads.length, 0),
+          retrievable: metaLeads.data.perForm.reduce((n, p) => n + p.leads.filter((l) => !isTestLead(l)).length, 0),
         },
       }
     : metaLeads;
@@ -175,7 +198,7 @@ export async function collectStatus(): Promise<Status> {
     const seen = new Set<string>();
     for (const { form, leads } of metaLeads.data.perForm) {
       for (const lead of leads) {
-        if (!lead.id || known.has(lead.id) || seen.has(lead.id)) continue;
+        if (!lead.id || isTestLead(lead) || known.has(lead.id) || seen.has(lead.id)) continue;
         seen.add(lead.id);
         const m: { id: string; createdTime?: string; form?: string } = { id: lead.id };
         if (lead.createdTime) m.createdTime = lead.createdTime;
@@ -220,7 +243,7 @@ let cached: { at: number; value: Promise<Status> } | undefined;
 
 export function getStatus(fresh = false): Promise<Status> {
   if (!fresh && cached && Date.now() - cached.at < TTL_MS) return cached.value;
-  const value = collectStatus();
+  const value = collectStatus(fresh);
   cached = { at: Date.now(), value };
   // Une collecte ratée ne doit pas rester en cache.
   value.catch(() => (cached = undefined));

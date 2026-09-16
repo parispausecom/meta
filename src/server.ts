@@ -15,7 +15,7 @@ import express, { type Request, type Response } from 'express';
 import { requireEnv, optionalEnv, errorMessage } from './lib/env.js';
 import { fetchLead, fetchLeadDetail } from './lib/graph.js';
 import { appendRow, existingLeadIds, readLeadRows } from './lib/sheets.js';
-import { toRow } from './lib/leads.js';
+import { toRow, isTestLead } from './lib/leads.js';
 import { getStatus, recordActivity, invalidateStatus } from './lib/status.js';
 import { renderDashboard } from './dashboard.js';
 import type { LeadgenValue, WebhookBody } from './types.js';
@@ -220,7 +220,16 @@ async function handleLead(value: LeadgenValue): Promise<void> {
       return;
     }
 
-    const row = toRow(await fetchLead(leadId));
+    const lead = await fetchLead(leadId);
+    // L'outil de test de Meta prouve que la livraison fonctionne : on le
+    // journalise sans polluer la base de prospects.
+    if (isTestLead(lead)) {
+      console.log(`Lead de test Meta ${leadId} reçu — non écrit.`);
+      recordActivity({ leadId, status: 'test Meta ignoré' });
+      return;
+    }
+
+    const row = toRow(lead);
     await appendRow(row);
     console.log(`✅ Lead ${leadId} ajouté au Google Sheet.`);
     recordActivity({ leadId, status: 'écrit', name: row[1] });
