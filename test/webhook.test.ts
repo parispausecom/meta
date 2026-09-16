@@ -149,3 +149,16 @@ test('le logo et le favicon sont servis sans authentification', async () => {
   const ico = await fetch(`${BASE}/favicon.ico`, { redirect: 'manual' });
   assert.equal(ico.status, 301);
 });
+
+test('les pages légales exigées par Meta sont publiques', async () => {
+  for (const path of ['/confidentialite', '/suppression-des-donnees']) {
+    const res = await fetch(`${BASE}${path}`);
+    assert.equal(res.status, 200, path);
+    const html = await res.text();
+    assert.match(html, /<html lang="fr">/);
+    assert.match(html, /<meta name="robots" content="index, follow">/);
+    assert.match(html, /mailto:/);
+  }
+  const robots = await (await fetch(`${BASE}/robots.txt`)).text();
+  assert.match(robots, /Allow: \/confidentialite/);
+});

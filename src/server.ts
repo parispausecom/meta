@@ -18,6 +18,7 @@ import { appendRow, existingLeadIds, readLeadRows } from './lib/sheets.js';
 import { toRow, isTestLead } from './lib/leads.js';
 import { getStatus, recordActivity, invalidateStatus } from './lib/status.js';
 import { renderDashboard } from './dashboard.js';
+import { renderPrivacy, renderDeletion } from './legal.js';
 import type { LeadgenValue, WebhookBody } from './types.js';
 
 /** Express n'expose pas le corps brut : on le conserve pour la signature. */
@@ -168,6 +169,11 @@ function requireDashboardAuth(req: Request, res: Response, next: () => void): vo
 }
 
 app.get('/', (_req: Request, res: Response) => res.redirect('/dashboard'));
+
+// Pages légales publiques, exigées par Meta pour le mode Live.
+app.get('/confidentialite', (_req: Request, res: Response) => res.type('html').send(renderPrivacy()));
+app.get('/suppression-des-donnees', (_req: Request, res: Response) => res.type('html').send(renderDeletion()));
+app.get('/privacy', (_req: Request, res: Response) => res.redirect(301, '/confidentialite'));
 
 app.get('/dashboard', requireDashboardAuth, async (req: Request, res: Response) => {
   try {
