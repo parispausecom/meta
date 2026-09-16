@@ -16,7 +16,8 @@ import { requireEnv, optionalEnv, errorMessage } from './lib/env.js';
 import { fetchLead, fetchLeadDetail } from './lib/graph.js';
 import { appendRow, existingLeadIds, readLeadRows } from './lib/sheets.js';
 import { toRow, isTestLead } from './lib/leads.js';
-import { getStatus, recordActivity, invalidateStatus } from './lib/status.js';
+import { getStatus, recordActivity, invalidateStatus, currentVersion } from './lib/status.js';
+import { getBusiness, invalidateBusiness, fetchConversation, fetchInstagramComments, fetchPostComments } from './lib/business.js';
 import { renderDashboard } from './dashboard.js';
 import { renderPrivacy, renderDeletion } from './legal.js';
 import type { LeadgenValue, WebhookBody } from './types.js';
@@ -116,17 +117,38 @@ app.post('/webhook', (req: Request, res: Response) => {
   res.sendStatus(200);
 
   const body = req.body as WebhookBody;
-  if (body?.object !== 'page') return;
+  const source = body?.object === 'instagram' ? 'Instagram' : body?.object === 'page' ? 'Facebook' : '';
+  if (!source) return;
 
   for (const entry of body.entry ?? []) {
     for (const change of entry.changes ?? []) {
-      if (change.field !== 'leadgen' || !change.value) continue;
-      handleLead(change.value).catch((err: unknown) => {
-        console.error('Traitement du lead échoué :', errorMessage(err));
-      });
+      if (source === 'Facebook' && change.field === 'leadgen' && change.value) {
+        handleLead(change.value).catch((err: unknown) => {
+          console.error('Traitement du lead échoué :', errorMessage(err));
+        });
+        continue;
+      }
+      // Publication, commentaire, mention, avis… : le tableau de bord relira
+      // Meta à sa prochaine actualisation.
+      noteEvent(`${source} · ${EVENT_LABELS[change.field ?? ''] ?? change.field ?? 'événement'}`);
     }
+    if (entry.messaging?.length) noteEvent(`${source} · message`);
   }
 });
+
+const EVENT_LABELS: Record<string, string> = {
+  feed: 'publication ou commentaire',
+  comments: 'commentaire',
+  mentions: 'mention',
+  ratings: 'avis',
+  messages: 'message',
+};
+
+function noteEvent(kind: string): void {
+  console.log(`Événement Meta : ${kind}`);
+  invalidateBusiness();
+  recordActivity({ status: 'événement', kind });
+}
 
 app.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
 
@@ -177,10 +199,49 @@ app.get('/privacy', (_req: Request, res: Response) => res.redirect(301, '/confid
 
 app.get('/dashboard', requireDashboardAuth, async (req: Request, res: Response) => {
   try {
-    const status = await getStatus(req.query.fresh === '1');
-    res.type('html').send(renderDashboard(status, REFRESH_SECONDS));
+    const fresh = req.query.fresh === '1';
+    const [status, business] = await Promise.all([getStatus(fresh), getBusiness(fresh)]);
+    res.type('html').send(renderDashboard(status, business, REFRESH_SECONDS, currentVersion()));
   } catch (err) {
     res.status(500).type('text').send(`Collecte impossible : ${errorMessage(err)}`);
+  }
+});
+
+// Interrogé toutes les quelques secondes par la page : aucun appel à Meta.
+app.get('/api/version', requireDashboardAuth, (_req: Request, res: Response) => {
+  res.json({ version: currentVersion() });
+});
+
+app.get('/api/business', requireDashboardAuth, async (req: Request, res: Response) => {
+  res.json(await getBusiness(req.query.fresh === '1'));
+});
+
+const META_ID = /^[\d_]{5,60}$/;
+
+app.get('/api/conversations/:id', requireDashboardAuth, async (req: Request, res: Response) => {
+  const id = String(req.params.id ?? '');
+  // Les identifiants de conversation Messenger commencent par « t_ ».
+  if (!/^t_[\w-]{5,80}$/.test(id)) {
+    res.status(400).json({ error: 'Identifiant de conversation invalide.' });
+    return;
+  }
+  try {
+    res.json({ messages: await fetchConversation(id), pageId: process.env.META_PAGE_ID });
+  } catch (err) {
+    res.status(502).json({ error: errorMessage(err) });
+  }
+});
+
+app.get('/api/comments/:source/:id', requireDashboardAuth, async (req: Request, res: Response) => {
+  const { source, id } = req.params as { source: string; id: string };
+  if (!META_ID.test(id) || !['instagram', 'facebook'].includes(source)) {
+    res.status(400).json({ error: 'Publication invalide.' });
+    return;
+  }
+  try {
+    res.json({ comments: source === 'instagram' ? await fetchInstagramComments(id) : await fetchPostComments(id) });
+  } catch (err) {
+    res.status(502).json({ error: errorMessage(err) });
   }
 });
 

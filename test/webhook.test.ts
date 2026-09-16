@@ -162,3 +162,30 @@ test('les pages légales exigées par Meta sont publiques', async () => {
   const robots = await (await fetch(`${BASE}/robots.txt`)).text();
   assert.match(robots, /Allow: \/confidentialite/);
 });
+
+test('un événement Instagram signé fait avancer le signal de fraîcheur', async () => {
+  const auth = { authorization: basic('pausecom', DASHBOARD_PASSWORD) };
+  const before = (await (await fetch(`${BASE}/api/version`, { headers: auth })).json()).version;
+  await new Promise((r) => setTimeout(r, 5));
+  const body = JSON.stringify({
+    object: 'instagram',
+    entry: [{ id: '1', changes: [{ field: 'comments', value: { id: '9', text: 'Bravo' } }] }],
+  });
+  const res = await fetch(`${BASE}/webhook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Hub-Signature-256': sign(body) },
+    body,
+  });
+  assert.equal(res.status, 200);
+  await new Promise((r) => setTimeout(r, 50));
+  const after = (await (await fetch(`${BASE}/api/version`, { headers: auth })).json()).version;
+  assert.notEqual(after, before);
+});
+
+test('les routes de détail refusent les identifiants invalides', async () => {
+  const auth = { authorization: basic('pausecom', DASHBOARD_PASSWORD) };
+  assert.equal((await fetch(`${BASE}/api/conversations/abc`, { headers: auth })).status, 400);
+  assert.equal((await fetch(`${BASE}/api/comments/tiktok/123456`, { headers: auth })).status, 400);
+  assert.equal((await fetch(`${BASE}/api/leads/..%2Fme`, { headers: auth })).status, 400);
+  assert.equal((await fetch(`${BASE}/api/business`)).status, 401);
+});

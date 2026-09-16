@@ -8,6 +8,8 @@
  * données : tout passe par `textContent`.
  */
 import type { Status } from './lib/status.js';
+import type { Business } from './lib/business.js';
+import { renderBusiness, businessNav, businessCss, businessScript } from './dashboard-business.js';
 import type { LeadRow } from './types.js';
 
 const esc = (s: unknown) =>
@@ -72,7 +74,7 @@ function monthly(rows: LeadRow[]): Array<{ key: string; short: string; long: str
 
 // ── Page ──────────────────────────────────────────────────────────────────
 
-export function renderDashboard(s: Status, refreshSeconds: number): string {
+export function renderDashboard(s: Status, b: Business, refreshSeconds: number, version: number): string {
   const rows = s.sheet.ok ? [...s.sheet.data.rows].sort((a, b) => +new Date(b[0]) - +new Date(a[0])) : [];
   const within = (days: number) => rows.filter((r) => Date.now() - +new Date(r[0]) < days * 86400_000).length;
   const last = rows[0];
@@ -135,7 +137,7 @@ export function renderDashboard(s: Status, refreshSeconds: number): string {
       (a) => `<tr>
         <td data-label="Reçu" class="c-date"><time datetime="${esc(a.at)}">${dateTime(a.at)}</time></td>
         <td data-label="Résultat"><span class="status status-${a.status === 'échec' ? 'ko' : a.status === 'écrit' ? 'ok' : 'neutral'}">${esc(a.status)}</span></td>
-        <th scope="row" data-label="Lead"><button type="button" class="link" data-open="${esc(a.leadId)}" aria-haspopup="dialog">${esc(a.name || a.leadId)}</button></th>
+        <th scope="row" data-label="Élément">${a.leadId ? `<button type="button" class="link" data-open="${esc(a.leadId)}" aria-haspopup="dialog">${esc(a.name || a.leadId)}</button>` : esc(a.kind ?? '—')}</th>
         <td data-label="Erreur" class="c-error">${esc(a.error ?? '')}</td>
       </tr>`
     )
@@ -349,6 +351,7 @@ dl.facts dt:last-of-type, dl.facts dd:last-of-type { border-bottom: 0; }
 footer { border-top: 1px solid var(--line); }
 .footer-inner { max-width: 1200px; margin: 0 auto; padding: 24px 20px 40px; color: var(--muted); font-size: 13px; display: flex; gap: 12px 24px; flex-wrap: wrap; justify-content: space-between; }
 footer p { margin: 0; }
+${businessCss}
 </style>
 </head>
 <body>
@@ -378,8 +381,8 @@ footer p { margin: 0; }
     <li><a href="#chiffres">Chiffres clés</a></li>
     <li><a href="#tendance">Tendance</a></li>
     ${missing.length ? '<li><a href="#manquants">À rattraper</a></li>' : ''}
+    <li><a href="#leads">Leads</a></li>${businessNav}
     <li><a href="#activite">Activité</a></li>
-    <li><a href="#leads">Leads</a></li>
   </ul>
 </nav>
 
@@ -415,21 +418,6 @@ footer p { margin: 0; }
   </section>`
       : ''
   }
-
-  <section id="activite" aria-labelledby="h-activite">
-    <div class="section-head">
-      <h2 id="h-activite">Activité du webhook</h2>
-      <p class="section-note">Depuis le démarrage du serveur, le ${dateTime(s.server.startedAt)}</p>
-    </div>
-    <div class="card table-wrap">${
-      activityRows
-        ? `<table class="stack">
-        <caption class="sr-only">Notifications reçues de Meta depuis le démarrage</caption>
-        <thead><tr><th scope="col">Reçu</th><th scope="col">Résultat</th><th scope="col">Lead</th><th scope="col">Erreur</th></tr></thead>
-        <tbody>${activityRows}</tbody></table>`
-        : `<p class="empty">Aucune notification depuis le démarrage. Ce journal repart à zéro à chaque redémarrage ; le Sheet, lui, conserve tout.</p>`
-    }</div>
-  </section>
 
   <section id="leads" aria-labelledby="h-leads">
     <div class="section-head">
@@ -469,6 +457,23 @@ footer p { margin: 0; }
       }
     </div>
   </section>
+${renderBusiness(b)}
+
+  <section id="activite" aria-labelledby="h-activite">
+    <div class="section-head">
+      <h2 id="h-activite">Activité en temps réel</h2>
+      <p class="section-note">Depuis le démarrage du serveur, le ${dateTime(s.server.startedAt)}</p>
+    </div>
+    <div class="card table-wrap">${
+      activityRows
+        ? `<table class="stack">
+        <caption class="sr-only">Notifications reçues de Meta depuis le démarrage</caption>
+        <thead><tr><th scope="col">Reçu</th><th scope="col">Résultat</th><th scope="col">Élément</th><th scope="col">Erreur</th></tr></thead>
+        <tbody>${activityRows}</tbody></table>`
+        : `<p class="empty">Aucune notification de Meta depuis le démarrage. Les leads arrivent aussi par la synchronisation automatique toutes les 10 minutes ; ce journal repart à zéro à chaque redémarrage.</p>`
+    }</div>
+  </section>
+
 </main>
 
 <dialog id="sheet" aria-labelledby="sheet-title" aria-describedby="sheet-sub">
@@ -482,7 +487,7 @@ footer p { margin: 0; }
 <footer>
   <div class="footer-inner">
     <p>© ${new Date().getFullYear()} Pause-Com · Page privée : elle contient des données personnelles.</p>
-    <p>Données brutes : <a href="/api/status">/api/status</a></p>
+    <p>Données brutes : <a href="/api/status">/api/status</a> · <a href="/api/business">/api/business</a></p>
   </div>
 </footer>
 
@@ -558,8 +563,10 @@ footer p { margin: 0; }
   if (profile) profile.addEventListener('change', function () { state.profile = profile.value; apply(); });
 
   document.addEventListener('click', function (event) {
-    var el = event.target.closest('[data-period], [data-month], [data-jump], [data-open], #reset, tr[data-id]');
+    var el = event.target.closest('[data-panel], [data-period], [data-month], [data-jump], [data-open], #reset, tr[data-id], tr[data-conv]');
     if (!el) return;
+    if (el.dataset.panel) { openPanel(el); return; }
+    if (el.dataset.conv) { if (!event.target.closest('a, button')) openPanel(el.querySelector('[data-panel]')); return; }
     if (el.id === 'reset') { state = { q: '', profile: '', period: 'all', month: '' }; apply(); q && q.focus(); return; }
     if (el.dataset.open) { openLead(el.dataset.open, el); return; }
     if (el.dataset.jump) { document.getElementById(el.dataset.jump).scrollIntoView(); return; }
@@ -597,6 +604,7 @@ footer p { margin: 0; }
 
   // ── Fiche détaillée ──
   var dialog = document.getElementById('sheet');
+  var sub = document.getElementById('sheet-sub');
   var body = document.getElementById('sheet-body');
   var title = document.getElementById('sheet-title');
   var returnFocus = null;
@@ -680,6 +688,7 @@ footer p { margin: 0; }
 
   function openLead(id, trigger) {
     returnFocus = trigger || document.activeElement;
+    sub.textContent = 'Fiche lead';
     title.textContent = 'Chargement…';
     body.textContent = '';
     body.appendChild(h('p', { class: 'loading', text: 'Lecture du lead chez Meta et dans le Sheet…' }));
@@ -697,6 +706,7 @@ footer p { margin: 0; }
       });
   }
 
+${businessScript}
   document.getElementById('sheet-close').addEventListener('click', function () { dialog.close(); });
   dialog.addEventListener('click', function (e) { if (e.target === dialog) dialog.close(); });
   dialog.addEventListener('close', function () { if (returnFocus && returnFocus.focus) returnFocus.focus(); });
@@ -712,6 +722,24 @@ footer p { margin: 0; }
     store.set('scroll', String(window.scrollY));
     location.replace(location.pathname);
   }, REFRESH);
+
+  // Temps réel : le serveur signale chaque nouveauté reçue de Meta (lead,
+  // publication, commentaire, message). Cette vérification ne coûte aucun
+  // appel à Meta ; la page ne se recharge que si quelque chose a changé.
+  var version = ${JSON.stringify(String(version))};
+  setInterval(function () {
+    if (!auto.checked || document.hidden) return;
+    fetch('/api/version', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || String(j.version) === version) return;
+        var typing = document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) && document.activeElement !== auto;
+        if (dialog.open || typing) return;
+        store.set('scroll', String(window.scrollY));
+        location.replace(location.pathname);
+      })
+      .catch(function () {});
+  }, 10000);
 
   var y = Number(store.get('scroll'));
   if (y) { window.scrollTo(0, y); store.set('scroll', ''); }

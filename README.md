@@ -44,7 +44,7 @@ et compilé par `tsc` pour la production.
 |---|---|
 | `npm run typecheck` | vérifie les types sans rien produire |
 | `npm run build` | compile vers `dist/` |
-| `npm test` | 24 tests |
+| `npm test` | 30 tests |
 | `npm start` | démarre le serveur compilé |
 | `npm run dev` | serveur en rechargement automatique |
 | `npm run audit` | audit des accès Meta → rapport HTML ouvert dans le navigateur |
@@ -273,6 +273,20 @@ de sonde dans une tâche planifiée.
 Le webhook consulte le Sheet avant chaque écriture : un lead déjà présent
 n'est pas réécrit, même après un redémarrage du serveur.
 
+### Données Meta Business Suite
+
+Le tableau de bord affiche aussi l'audience (Instagram et Facebook, 28 jours),
+le profil et les dernières publications Instagram, les mentions, les
+publications et avis de la Page, et les conversations Messenger. Chaque
+publication s'ouvre sur ses commentaires, chaque conversation sur ses
+messages. Ces données sont lues avec le jeton de Page et gardées 5 minutes.
+
+Temps réel : Meta est abonné aux champs `leadgen`, `feed`, `messages` et
+`ratings` de la Page, et `comments` et `mentions` d'Instagram. Chaque
+notification vide le cache et fait avancer `/api/version`, que la page
+interroge toutes les 10 secondes sans appeler Meta : elle se recharge dès
+qu'une nouveauté arrive.
+
 ## Synchronisation planifiée (GitHub Actions)
 
 [.github/workflows/sync-leads.yml](.github/workflows/sync-leads.yml) sert de
@@ -317,6 +331,12 @@ doit être mis à jour ici comme sur Render.
 | `GET` | `/` | redirige vers `/dashboard` |
 | `GET` | `/dashboard` | tableau de bord (authentification) |
 | `GET` | `/api/status` | état en JSON (authentification) — 503 si un contrôle échoue |
+| `GET` | `/api/business` | données Business Suite en JSON (authentification) |
+| `GET` | `/api/version` | signal de fraîcheur interrogé par la page (authentification) |
+| `GET` | `/api/leads/:id` | fiche d'un lead (authentification) |
+| `GET` | `/api/conversations/:id` | messages d'une conversation (authentification) |
+| `GET` | `/api/comments/:source/:id` | commentaires d'une publication (authentification) |
+| `GET` | `/confidentialite`, `/suppression-des-donnees` | pages légales publiques |
 
 ## Notes d'implémentation
 

@@ -50,6 +50,8 @@ export interface WebhookBody {
   object?: string;
   entry?: Array<{
     id?: string;
-    changes?: Array<{ field?: string; value?: LeadgenValue }>;
+    changes?: Array<{ field?: string; value?: LeadgenValue & { item?: string; verb?: string } }>;
+    /** Messenger et Instagram Direct livrent leurs messages ici. */
+    messaging?: unknown[];
   }>;
 }

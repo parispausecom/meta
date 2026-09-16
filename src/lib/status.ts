@@ -14,11 +14,14 @@ import type { LeadRow } from '../types.js';
 
 // ── Activité du webhook ───────────────────────────────────────────────────
 
-export type ActivityStatus = 'écrit' | 'déjà présent' | 'test Meta ignoré' | 'échec';
+export type ActivityStatus = 'écrit' | 'déjà présent' | 'test Meta ignoré' | 'échec' | 'événement';
 
 export interface Activity {
   at: string;
-  leadId: string;
+  /** Absent pour un événement qui n'est pas un lead (publication, message…). */
+  leadId?: string;
+  /** Nature d'un événement autre qu'un lead, par exemple « Instagram · commentaire ». */
+  kind?: string;
   status: ActivityStatus;
   name?: string;
   error?: string;
@@ -36,11 +39,23 @@ const activity: Activity[] = [];
 const counters = { reçues: 0, écrites: 0, échecs: 0 };
 const startedAt = new Date();
 
+/**
+ * Compteur de fraîcheur : il avance à chaque nouveauté reçue de Meta. La page
+ * l'interroge toutes les quelques secondes, sans aucun appel à Meta, et se
+ * recharge dès qu'il change.
+ */
+let version = Date.now();
+export const currentVersion = () => version;
+export function bumpVersion(): void {
+  version = Date.now();
+}
+
 export function recordActivity(entry: Omit<Activity, 'at'>): void {
   activity.unshift({ at: new Date().toISOString(), ...entry });
   activity.length = Math.min(activity.length, MAX_ACTIVITY);
   counters.reçues++;
   if (entry.status === 'écrit') counters.écrites++;
+  bumpVersion();
   if (entry.status === 'échec') counters.échecs++;
 }
 
