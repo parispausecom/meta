@@ -66,7 +66,7 @@ export interface Status {
     activity: Activity[];
   };
   token: Block<{ valid: boolean; type?: string; neverExpires: boolean; expiresAt: string | null }>;
-  subscription: Block<{ active: boolean; callbackUrl?: string; fields: string[]; pageSubscribed: boolean }>;
+  subscription: Block<{ active: boolean; callbackUrl?: string; fields: string[]; pageSubscribed: boolean; pointsHere: boolean | null }>;
   sheet: Block<{ title?: string; total: number; rows: LeadRow[] }>;
   meta: Block<{ forms: number; activeForms: number; announced: number; retrievable: number }>;
   sync: Block<{ missing: Array<{ id: string; createdTime?: string; form?: string }> }>;
@@ -122,10 +122,14 @@ export async function collectStatus(): Promise<Status> {
       );
       const mine = (apps.data ?? []).find((a) => a.id === id);
 
-      const result: { active: boolean; callbackUrl?: string; fields: string[]; pageSubscribed: boolean } = {
+      // Render fournit l'adresse publique du service. Un webhook « actif » qui
+      // vise un autre serveur ne livre rien ici : c'est ce que ce test attrape.
+      const self = process.env.RENDER_EXTERNAL_URL?.replace(/\/$/, '');
+      const result: { active: boolean; callbackUrl?: string; fields: string[]; pageSubscribed: boolean; pointsHere: boolean | null } = {
         active: Boolean(page?.active),
         fields: (page?.fields ?? []).map((f) => f.name ?? '').filter(Boolean),
         pageSubscribed: Boolean(mine?.subscribed_fields?.includes('leadgen')),
+        pointsHere: self ? page?.callback_url === `${self}/webhook` : null,
       };
       if (page?.callback_url) result.callbackUrl = page.callback_url;
       return result;
@@ -185,6 +189,7 @@ export async function collectStatus(): Promise<Status> {
   const healthy =
     token.ok && token.data.valid &&
     subscription.ok && subscription.data.active && subscription.data.pageSubscribed &&
+    subscription.data.pointsHere !== false &&
     sheet.ok &&
     sync.ok && sync.data.missing.length === 0;
 

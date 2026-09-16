@@ -58,7 +58,7 @@ await runCli(async () => {
     `${ok(s.token.ok && s.token.data.valid)} Jeton Meta     ${s.token.ok ? `${s.token.data.type} · ${s.token.data.valid ? 'valide' : 'INVALIDE'} · ${s.token.data.neverExpires ? "n'expire pas" : `expire le ${paris(s.token.data.expiresAt)}`}` : s.token.error}`
   );
   console.log(
-    `${ok(sub.ok && sub.data.active && sub.data.pageSubscribed)} Webhook Meta   ${sub.ok ? `${sub.data.active ? 'actif' : 'INACTIF'} → ${sub.data.callbackUrl} · Page ${sub.data.pageSubscribed ? 'abonnée' : 'NON abonnée'}` : sub.error}`
+    `${ok(sub.ok && sub.data.active && sub.data.pageSubscribed && sub.data.pointsHere !== false)} Webhook Meta   ${sub.ok ? `${sub.data.active ? 'actif' : 'INACTIF'} → ${sub.data.callbackUrl} · Page ${sub.data.pageSubscribed ? 'abonnée' : 'NON abonnée'}${sub.data.pointsHere === false ? `\n                  ⚠ Meta envoie les leads à un AUTRE serveur que ${PROD_URL}` : ''}` : sub.error}`
   );
   console.log(`${ok(s.sheet.ok)} Google Sheet   ${s.sheet.ok ? `« ${s.sheet.data.title} » · ${s.sheet.data.total} leads` : s.sheet.error}`);
   console.log(

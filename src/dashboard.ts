@@ -59,9 +59,15 @@ function checks(s: Status): Check[] {
     },
     {
       label: 'Webhook déclaré chez Meta',
-      ok: s.subscription.ok && s.subscription.data.active && s.subscription.data.fields.includes('leadgen'),
+      ok:
+        s.subscription.ok &&
+        s.subscription.data.active &&
+        s.subscription.data.fields.includes('leadgen') &&
+        s.subscription.data.pointsHere !== false,
       detail: s.subscription.ok
-        ? `${s.subscription.data.active ? 'actif' : 'INACTIF'} → ${esc(s.subscription.data.callbackUrl ?? 'aucune URL')} · champs : ${esc(s.subscription.data.fields.join(', ') || 'aucun')}`
+        ? `${s.subscription.data.active ? 'actif' : 'INACTIF'} → ${esc(s.subscription.data.callbackUrl ?? 'aucune URL')}${
+            s.subscription.data.pointsHere === false ? ' · <b>Meta envoie les leads à un AUTRE serveur que celui-ci</b>' : ''
+          } · champs : ${esc(s.subscription.data.fields.join(', ') || 'aucun')}`
         : esc(err(s.subscription)),
     },
     {
@@ -169,6 +175,10 @@ export function renderDashboard(s: Status, refreshSeconds: number): string {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <title>Leads Pause-Com — production</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#000000">
 <style>
 :root{color-scheme:light dark;--bg:#f4f5f7;--card:#fff;--fg:#1a1d21;--dim:#6b7280;--faint:#9099a5;--line:#eef0f2;--th:#fafbfc;--blue:#3b82f6;--ok:#16a34a;--ko:#dc2626;--mid:#6b7280}
 @media(prefers-color-scheme:dark){:root{--bg:#0e1014;--card:#171a20;--fg:#e6e8eb;--dim:#9aa3ae;--faint:#7b8490;--line:#22262e;--th:#1c2027;--ok:#4ade80;--ko:#f87171}}
@@ -179,6 +189,7 @@ a{color:var(--blue);text-decoration:none}
 header{display:flex;gap:16px;align-items:center;flex-wrap:wrap;background:var(--card);border-radius:16px;padding:20px;box-shadow:0 1px 3px #0000000f}
 h1{font-size:22px;margin:0;letter-spacing:-.01em}
 .sub{color:var(--dim);font-size:13px;margin-top:2px}
+.logo{height:58px;width:auto;border-radius:12px;background:#000;display:block;flex:none}
 .pill{padding:4px 12px;border-radius:20px;font-weight:700;font-size:12.5px;white-space:nowrap}
 .pill.ok{background:#16a34a1a;color:var(--ok)}.pill.ko{background:#dc26261a;color:var(--ko)}
 .actions{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
@@ -218,6 +229,7 @@ code{background:#0000000f;padding:1px 5px;border-radius:4px;font-size:12px}
 </style></head><body><div class="wrap">
 
 <header>
+  <img class="logo" src="/logo.png" alt="Pause-Com" width="116" height="58">
   <div>
     <h1>Leads Pause-Com <span class="pill ${s.healthy ? 'ok' : 'ko'}">${s.healthy ? '● Automatisation opérationnelle' : '● Attention requise'}</span></h1>
     <div class="sub">Données lues en direct chez Meta et dans le Google Sheet · mis à jour <b id="age">${since(s.generatedAt)}</b> (${dateTime(s.generatedAt)})</div>

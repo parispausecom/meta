@@ -139,3 +139,13 @@ test('le tableau de bord rejette un mauvais identifiant', async () => {
   const res = await fetch(`${BASE}/api/status`, { headers: { authorization: basic('intrus', DASHBOARD_PASSWORD) } });
   assert.equal(res.status, 401);
 });
+
+test('le logo et le favicon sont servis sans authentification', async () => {
+  for (const file of ['/logo.png', '/favicon-32.png', '/apple-touch-icon.png']) {
+    const res = await fetch(`${BASE}${file}`);
+    assert.equal(res.status, 200, file);
+    assert.equal(res.headers.get('content-type'), 'image/png', file);
+  }
+  const ico = await fetch(`${BASE}/favicon.ico`, { redirect: 'manual' });
+  assert.equal(ico.status, 301);
+});

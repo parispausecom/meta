@@ -10,6 +10,7 @@
  * on traite le lead en arrière-plan.
  */
 import crypto from 'node:crypto';
+import path from 'node:path';
 import express, { type Request, type Response } from 'express';
 import { requireEnv, optionalEnv, errorMessage } from './lib/env.js';
 import { fetchLead } from './lib/graph.js';
@@ -99,6 +100,11 @@ app.post('/webhook', (req: Request, res: Response) => {
 });
 
 app.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
+
+// Logo et icônes : publics, sans donnée sensible. Render lance le serveur
+// depuis la racine du dépôt, où se trouve `public/`.
+app.use(express.static(path.resolve('public'), { maxAge: '7d' }));
+app.get('/favicon.ico', (_req: Request, res: Response) => res.redirect(301, '/favicon-32.png'));
 
 // --- Tableau de bord --------------------------------------------------------
 // Il expose des données personnelles : sans mot de passe défini, il reste
