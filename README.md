@@ -50,6 +50,7 @@ et compilé par `tsc` pour la production.
 | `npm run audit` | audit des accès Meta → rapport HTML ouvert dans le navigateur |
 | `npm run status` | état de la production en direct, dans le terminal |
 | `npm run dashboard` | ouvre le tableau de bord de production |
+| `npm run sheet:report` | réécrit le rapport Google Sheets (onglets, graphiques) |
 
 Arborescence :
 
@@ -286,6 +287,25 @@ Temps réel : Meta est abonné aux champs `leadgen`, `feed`, `messages` et
 notification vide le cache et fait avancer `/api/version`, que la page
 interroge toutes les 10 secondes sans appeler Meta : elle se recharge dès
 qu'une nouveauté arrive.
+
+## Rapport Google Sheets
+
+`npm run sheet:report` transforme le classeur en rapport :
+
+| Onglet | Contenu |
+|---|---|
+| Tableau de bord | 8 indicateurs et 4 graphiques : leads par mois et par profil, audience Facebook sur 28 jours, publications Instagram les plus aimées |
+| Prospects | vue **en direct** de l'onglet Leads (formule) : date à l'heure de Paris, profil lisible, du plus récent au plus ancien |
+| Instagram, Facebook | publications avec aperçu, statistiques et lien |
+| Audience | statistiques quotidiennes Facebook et totaux Instagram sur 28 jours |
+| Messages, Mentions, Avis | conversations Messenger, identifications Instagram, avis de la Page |
+| Leads | onglet source écrit par l'automatisation : mis en forme, jamais vidé |
+| Données graphiques | onglet masqué qui alimente les graphiques |
+
+Le script est rejouable : chaque onglet généré est vidé puis réécrit. Le
+workflow [sheet-report.yml](.github/workflows/sheet-report.yml) le lance
+toutes les heures. L'onglet Prospects n'en dépend pas : c'est une formule, qui
+suit l'onglet Leads au fil de l'eau.
 
 ## Synchronisation planifiée (GitHub Actions)
 

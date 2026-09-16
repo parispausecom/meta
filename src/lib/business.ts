@@ -102,6 +102,8 @@ export interface Series {
   title: string;
   total: number;
   values: number[];
+  /** Fin de chaque journée mesurée, alignée sur `values`. */
+  dates: string[];
 }
 
 export interface Business {
@@ -177,7 +179,7 @@ async function collect(): Promise<Business> {
       })).data ?? []
     ),
     part(async () => {
-      const r = await graphGet<Edge<{ name: string; values?: Array<{ value?: number }> }>>(`${pageId}/insights`, {
+      const r = await graphGet<Edge<{ name: string; values?: Array<{ value?: number; end_time?: string }> }>>(`${pageId}/insights`, {
         metric: 'page_post_engagements,page_views_total,page_daily_follows_unique',
         period: 'day',
         since,
@@ -185,7 +187,8 @@ async function collect(): Promise<Business> {
       });
       return (r.data ?? []).map((m) => {
         const values = (m.values ?? []).map((v) => (typeof v.value === 'number' ? v.value : 0));
-        return { name: m.name, title: TITLES[m.name] ?? m.name, total: values.reduce((a, b) => a + b, 0), values };
+        const dates = (m.values ?? []).map((v) => v.end_time ?? '');
+        return { name: m.name, title: TITLES[m.name] ?? m.name, total: values.reduce((a, b) => a + b, 0), values, dates };
       });
     }),
     part(async () => {

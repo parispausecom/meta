@@ -212,3 +212,17 @@ export async function checkAccess(): Promise<SheetAccess> {
   if (data.properties?.title) access.title = data.properties.title;
   return access;
 }
+
+/**
+ * Appel brut à l'API Sheets sur le classeur configuré : `path` est ajouté
+ * après l'identifiant (`:batchUpdate`, `/values/…`, `?fields=…`).
+ */
+export async function sheetsApi<T>(path: string, method: 'GET' | 'POST' | 'PUT' = 'GET', data?: object): Promise<T> {
+  const spreadsheetId = requireEnv('GOOGLE_SPREADSHEET_ID');
+  try {
+    const res = await auth().request<T>(data ? { url: `${API}/${spreadsheetId}${path}`, method, data } : { url: `${API}/${spreadsheetId}${path}`, method });
+    return res.data;
+  } catch (err) {
+    throw new Error(`API Sheets — ${googleError(err)}`);
+  }
+}

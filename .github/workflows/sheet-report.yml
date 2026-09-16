@@ -1,0 +1,39 @@
+# Rapport Google Sheets : tableau de bord, graphiques, Instagram, Facebook,
+# audience, messages, mentions et avis, réécrits toutes les heures.
+# L'onglet « Prospects » est une formule : il suit l'onglet Leads en direct,
+# sans attendre ce workflow.
+
+name: Rapport Google Sheets
+
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sheet-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      META_PAGE_ACCESS_TOKEN: ${{ secrets.META_PAGE_ACCESS_TOKEN }}
+      META_PAGE_ID: ${{ vars.META_PAGE_ID }}
+      GRAPH_API_VERSION: ${{ vars.GRAPH_API_VERSION }}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_SPREADSHEET_ID: ${{ secrets.GOOGLE_SPREADSHEET_ID }}
+      GOOGLE_SHEET_RANGE: ${{ vars.GOOGLE_SHEET_RANGE }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Réécrire le rapport
+        run: npm run -s sheet:report
