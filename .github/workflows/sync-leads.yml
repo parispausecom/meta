@@ -2,19 +2,20 @@
 #
 # Le webhook écrit chaque lead en temps réel. Ce workflow rattrape ce qu'il
 # aurait manqué (service Render endormi, Meta qui ne livre pas, panne de
-# jeton) : toutes les 30 minutes, il compare Meta et le Sheet et n'ajoute que
+# jeton) : toutes les 10 minutes, il compare Meta et le Sheet et n'ajoute que
 # les leads absents. Il vérifie ensuite la production et échoue si un contrôle
 # est au rouge — GitHub prévient alors par e-mail.
 #
-# 30 minutes : le dépôt est privé, et GitHub facture chaque exécution une
-# minute au moins. 48 exécutions par jour tiennent dans les 2 000 minutes
-# gratuites mensuelles ; toutes les 15 minutes les dépasseraient.
+# Le dépôt est public : les minutes Actions n'y sont pas décomptées. S'il
+# redevenait privé, repasser à 30 minutes — chaque exécution coûte au moins
+# une minute sur les 2 000 gratuites du compte, que la synchro Notion de
+# newsletter-backend consomme déjà en partie.
 
 name: Synchronisation des leads
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 permissions:

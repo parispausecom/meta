@@ -276,12 +276,12 @@ n'est pas réécrit, même après un redémarrage du serveur.
 ## Synchronisation planifiée (GitHub Actions)
 
 [.github/workflows/sync-leads.yml](.github/workflows/sync-leads.yml) sert de
-filet de sécurité au webhook. Toutes les 30 minutes, il lance
+filet de sécurité au webhook. Toutes les 10 minutes, il lance
 `npm run backfill`, qui n'ajoute au Sheet que les leads absents, puis
 `npm run status`, qui vérifie la production. Si un contrôle est au rouge,
 l'exécution échoue et GitHub prévient par e-mail. Un lead manqué par le
 webhook (service endormi, Meta qui ne livre pas) arrive donc dans le Sheet en
-30 minutes au plus.
+une dizaine de minutes.
 
 Configuration, dans *Settings → Secrets and variables → Actions* du dépôt :
 
@@ -298,10 +298,11 @@ gh run list --workflow=sync-leads.yml --limit 5
 gh run watch                     # suivre l'exécution en cours
 ```
 
-30 minutes et non 15 : le dépôt est privé et GitHub facture chaque exécution
-une minute au moins. 48 exécutions par jour tiennent dans les 2 000 minutes
-gratuites ; 96 les dépasseraient. GitHub peut retarder une tâche planifiée de
-quelques minutes aux heures chargées.
+Le dépôt est public : ses minutes Actions sont gratuites et illimitées. S'il
+redevenait privé, repasser à 30 minutes, sans quoi le quota de 2 000 minutes
+du compte, partagé avec la synchro Notion de `newsletter-backend`, serait
+dépassé. GitHub peut retarder une tâche planifiée de quelques minutes aux
+heures chargées.
 
 Après un renouvellement du jeton de Page, le secret `META_PAGE_ACCESS_TOKEN`
 doit être mis à jour ici comme sur Render.
