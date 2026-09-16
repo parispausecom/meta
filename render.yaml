@@ -31,3 +31,8 @@ services:
         sync: false
       - key: GOOGLE_SHEET_RANGE
         value: Leads!A:G
+      # Tableau de bord /dashboard : fermé tant que le mot de passe est absent.
+      - key: DASHBOARD_USER
+        value: pausecom
+      - key: DASHBOARD_PASSWORD
+        sync: false

@@ -44,10 +44,12 @@ et compilé par `tsc` pour la production.
 |---|---|
 | `npm run typecheck` | vérifie les types sans rien produire |
 | `npm run build` | compile vers `dist/` |
-| `npm test` | 19 tests |
+| `npm test` | 24 tests |
 | `npm start` | démarre le serveur compilé |
 | `npm run dev` | serveur en rechargement automatique |
 | `npm run audit` | audit des accès Meta → rapport HTML ouvert dans le navigateur |
+| `npm run status` | état de la production en direct, dans le terminal |
+| `npm run dashboard` | ouvre le tableau de bord de production |
 
 Arborescence :
 
@@ -244,6 +246,33 @@ Toutes les sondes sont des `GET` : rien n'est modifié côté Meta. Les jetons s
 masqués dans le rapport, mais celui-ci contient des données personnelles (leads,
 conversations) — il est exclu du dépôt par `.gitignore`.
 
+## Suivre la production
+
+`https://pausecom-meta.onrender.com/dashboard` affiche en direct la santé de la
+chaîne (jeton, abonnement Meta, Sheet, concordance Meta ↔ Sheet), les chiffres
+clés, les leads par mois, l'activité du webhook depuis le démarrage et les
+derniers leads. La page interroge Meta et le Sheet à chaque visite, avec un
+cache de 30 s ; `Actualiser maintenant` l'ignore.
+
+Elle contient des données personnelles : elle exige l'identifiant
+`DASHBOARD_USER` (par défaut `pausecom`) et le mot de passe `DASHBOARD_PASSWORD`,
+à définir à l'identique dans `.env` et sur Render. Sans mot de passe, la page
+reste fermée.
+
+```bash
+npm run dashboard            # ouvre la page dans le navigateur
+npm run dashboard:password   # copie le mot de passe dans le presse-papiers
+npm run status               # même état, dans le terminal
+npm run status -- --fresh    # sans le cache de 30 s
+npm run status -- --json     # réponse brute de /api/status
+```
+
+`npm run status` sort en erreur (code 1) si un contrôle échoue : il peut servir
+de sonde dans une tâche planifiée.
+
+Le webhook consulte le Sheet avant chaque écriture : un lead déjà présent
+n'est pas réécrit, même après un redémarrage du serveur.
+
 ## Endpoints du serveur
 
 | Méthode | Route | Rôle |
@@ -251,6 +280,9 @@ conversations) — il est exclu du dépôt par `.gitignore`.
 | `GET` | `/webhook` | vérification de l'abonnement par Meta |
 | `POST` | `/webhook` | réception des leads |
 | `GET` | `/health` | contrôle de disponibilité |
+| `GET` | `/` | redirige vers `/dashboard` |
+| `GET` | `/dashboard` | tableau de bord (authentification) |
+| `GET` | `/api/status` | état en JSON (authentification) — 503 si un contrôle échoue |
 
 ## Notes d'implémentation
 

@@ -170,6 +170,32 @@ export async function existingLeadIds(): Promise<Set<string>> {
   }
 }
 
+/**
+ * Toutes les lignes de leads, en-tête exclu, chaque cellule ramenée au texte.
+ *
+ * Les lignes plus courtes que LeadRow (colonnes vides en fin de ligne, que
+ * l'API omet) sont complétées pour que l'appelant n'ait pas à le vérifier.
+ */
+export async function readLeadRows(): Promise<LeadRow[]> {
+  const spreadsheetId = requireEnv('GOOGLE_SPREADSHEET_ID');
+  const range = optionalEnv('GOOGLE_SHEET_RANGE', DEFAULT_RANGE);
+
+  try {
+    const { data } = await auth().request<ValuesResponse>({
+      url: `${API}/${spreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=UNFORMATTED_VALUE`,
+    });
+
+    return (data.values ?? []).slice(1).map((row) => {
+      const cells = Array.from({ length: 7 }, (_, i) =>
+        i === ID_COLUMN ? cellToId(row[i]) : String(row[i] ?? '')
+      );
+      return cells as LeadRow;
+    });
+  } catch (err) {
+    throw new Error(`Lecture du Sheet impossible — ${googleError(err)}`);
+  }
+}
+
 /** Vérifie que le compte de service peut bien lire le Sheet ciblé. */
 export async function checkAccess(): Promise<SheetAccess> {
   const spreadsheetId = requireEnv('GOOGLE_SPREADSHEET_ID');

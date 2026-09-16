@@ -13,8 +13,10 @@ import crypto from 'node:crypto';
 import express, { type Request, type Response } from 'express';
 import { requireEnv, optionalEnv, errorMessage } from './lib/env.js';
 import { fetchLead } from './lib/graph.js';
-import { appendRow } from './lib/sheets.js';
+import { appendRow, existingLeadIds } from './lib/sheets.js';
 import { toRow } from './lib/leads.js';
+import { getStatus, recordActivity, invalidateStatus } from './lib/status.js';
+import { renderDashboard } from './dashboard.js';
 import type { LeadgenValue, WebhookBody } from './types.js';
 
 /** Express n'expose pas le corps brut : on le conserve pour la signature. */
@@ -98,6 +100,67 @@ app.post('/webhook', (req: Request, res: Response) => {
 
 app.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
 
+// --- Tableau de bord --------------------------------------------------------
+// Il expose des données personnelles : sans mot de passe défini, il reste
+// fermé plutôt que public.
+const DASHBOARD_USER = optionalEnv('DASHBOARD_USER', 'pausecom');
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD;
+const REFRESH_SECONDS = 60;
+
+const same = (a: string, b: string) => {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
+};
+
+function requireDashboardAuth(req: Request, res: Response, next: () => void): void {
+  res.set('Cache-Control', 'no-store');
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+
+  if (!DASHBOARD_PASSWORD) {
+    res.status(503).type('text').send('Tableau de bord désactivé : définir DASHBOARD_PASSWORD.');
+    return;
+  }
+
+  const [scheme, encoded] = (req.get('authorization') ?? '').split(' ');
+  const [user, ...rest] = Buffer.from(encoded ?? '', 'base64').toString().split(':');
+  if (scheme === 'Basic' && same(user ?? '', DASHBOARD_USER) && same(rest.join(':'), DASHBOARD_PASSWORD)) {
+    next();
+    return;
+  }
+
+  res.set('WWW-Authenticate', 'Basic realm="Leads Pause-Com", charset="UTF-8"');
+  res.status(401).type('text').send('Authentification requise.');
+}
+
+app.get('/', (_req: Request, res: Response) => res.redirect('/dashboard'));
+
+app.get('/dashboard', requireDashboardAuth, async (req: Request, res: Response) => {
+  try {
+    const status = await getStatus(req.query.fresh === '1');
+    res.type('html').send(renderDashboard(status, REFRESH_SECONDS));
+  } catch (err) {
+    res.status(500).type('text').send(`Collecte impossible : ${errorMessage(err)}`);
+  }
+});
+
+app.get('/api/status', requireDashboardAuth, async (req: Request, res: Response) => {
+  try {
+    const status = await getStatus(req.query.fresh === '1');
+    // Le détail des lignes reste réservé à la page : le JSON en donne le compte
+    // et les plus récentes, ce qui suffit à un contrôle depuis un terminal.
+    const recent = status.sheet.ok
+      ? [...status.sheet.data.rows].sort((a, b) => +new Date(b[0]) - +new Date(a[0])).slice(0, 10)
+      : [];
+    const sheet = status.sheet.ok
+      ? { ok: true, data: { title: status.sheet.data.title, total: status.sheet.data.total, recent } }
+      : status.sheet;
+    res.status(status.healthy ? 200 : 503).json({ ...status, sheet });
+  } catch (err) {
+    res.status(500).json({ healthy: false, error: errorMessage(err) });
+  }
+});
+
 // Meta peut livrer deux fois le même lead (réessai réseau) : on garde en
 // mémoire les IDs déjà traités pour ne pas dupliquer les lignes.
 const processed = new Set<string>();
@@ -115,12 +178,23 @@ async function handleLead(value: LeadgenValue): Promise<void> {
   console.log(`Nouveau lead ${leadId} (formulaire ${formId}, page ${pageId})`);
 
   try {
-    const lead = await fetchLead(leadId);
-    await appendRow(toRow(lead));
+    // Le Set ci-dessus repart à zéro à chaque redémarrage (le plan gratuit de
+    // Render endort le service) : le Sheet est la seule mémoire fiable.
+    if ((await existingLeadIds()).has(leadId)) {
+      console.log(`Lead ${leadId} déjà présent dans le Sheet — ignoré.`);
+      recordActivity({ leadId, status: 'déjà présent' });
+      return;
+    }
+
+    const row = toRow(await fetchLead(leadId));
+    await appendRow(row);
     console.log(`✅ Lead ${leadId} ajouté au Google Sheet.`);
+    recordActivity({ leadId, status: 'écrit', name: row[1] });
+    invalidateStatus();
   } catch (err) {
     // On retire l'ID pour qu'un éventuel réessai de Meta puisse retenter.
     processed.delete(leadId);
+    recordActivity({ leadId, status: 'échec', error: errorMessage(err) });
     throw err;
   }
 }
@@ -130,4 +204,5 @@ app.listen(Number(PORT), () => {
   console.log(`  Vérification : GET  /webhook`);
   console.log(`  Leads        : POST /webhook`);
   console.log(`  Santé        : GET  /health`);
+  console.log(`  Tableau      : GET  /dashboard${DASHBOARD_PASSWORD ? '' : '  (désactivé : DASHBOARD_PASSWORD absent)'}`);
 });

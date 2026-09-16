@@ -21,7 +21,10 @@
     "dev": "node --import tsx --watch src/server.ts",
     "meta": "bash scripts/meta-links.sh",
     "inventory": "node --import tsx src/inventory.ts",
-    "audit": "node --import tsx src/audit.ts"
+    "audit": "node --import tsx src/audit.ts",
+    "status": "node --import tsx src/status-cli.ts",
+    "dashboard": "node --import tsx src/status-cli.ts --open",
+    "dashboard:password": "printf %s \"$(grep '^DASHBOARD_PASSWORD=' .env | cut -d= -f2-)\" | pbcopy && echo 'Mot de passe copié dans le presse-papiers.'"
   },
   "dependencies": {
     "dotenv": "^17.4.2",

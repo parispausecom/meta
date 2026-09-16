@@ -7,6 +7,7 @@ const PORT = 3900 + Math.floor(Math.random() * 90);
 const BASE = `http://127.0.0.1:${PORT}`;
 const VERIFY_TOKEN = 'token_de_test';
 const APP_SECRET = 'secret_de_test';
+const DASHBOARD_PASSWORD = 'mdp_de_test';
 
 let server: ChildProcess | undefined;
 
@@ -32,6 +33,8 @@ before(async () => {
       META_APP_SECRET: APP_SECRET,
       META_PAGE_ACCESS_TOKEN: 'jeton_factice',
       GOOGLE_SPREADSHEET_ID: 'sheet_factice',
+      DASHBOARD_USER: 'pausecom',
+      DASHBOARD_PASSWORD,
     },
     stdio: 'ignore',
   });
@@ -107,4 +110,32 @@ test('le serveur acquitte avant de traiter, donc répond vite', async () => {
   // Meta abandonne au-delà de quelques secondes : l'appel à la Graph API ne
   // doit jamais retarder l'accusé de réception.
   assert.ok(Date.now() - started < 1000, 'la réponse doit être immédiate');
+});
+
+const basic = (user: string, pass: string) =>
+  'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64');
+
+test("l'accueil redirige vers le tableau de bord", async () => {
+  const res = await fetch(`${BASE}/`, { redirect: 'manual' });
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get('location'), '/dashboard');
+});
+
+test('le tableau de bord exige une authentification', async () => {
+  const res = await fetch(`${BASE}/dashboard`);
+  assert.equal(res.status, 401);
+  assert.match(res.headers.get('www-authenticate') ?? '', /^Basic /);
+  assert.equal(res.headers.get('cache-control'), 'no-store');
+});
+
+test('le tableau de bord rejette un mauvais mot de passe', async () => {
+  for (const path of ['/dashboard', '/api/status']) {
+    const res = await fetch(`${BASE}${path}`, { headers: { authorization: basic('pausecom', 'faux') } });
+    assert.equal(res.status, 401, path);
+  }
+});
+
+test('le tableau de bord rejette un mauvais identifiant', async () => {
+  const res = await fetch(`${BASE}/api/status`, { headers: { authorization: basic('intrus', DASHBOARD_PASSWORD) } });
+  assert.equal(res.status, 401);
 });
