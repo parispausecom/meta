@@ -82,6 +82,11 @@ interface AppSubscription {
 /** Lit Meta et le Sheet, puis confronte les deux. */
 export async function collectStatus(): Promise<Status> {
   const pageId = process.env.META_PAGE_ID ?? '';
+  // Sans identifiant, les chemins Graph deviennent « /subscribed_apps » et Meta
+  // répond une erreur obscure : on nomme la vraie cause.
+  const needPage = () => {
+    if (!pageId) throw new Error('META_PAGE_ID absent de la configuration du serveur');
+  };
   const pageToken = process.env.META_PAGE_ACCESS_TOKEN ?? '';
   const appSecret = process.env.META_APP_SECRET ?? '';
 
@@ -110,6 +115,7 @@ export async function collectStatus(): Promise<Status> {
       const body = (await (await fetch(url)).json()) as { data?: AppSubscription[]; error?: { message?: string } };
       if (body.error) throw new Error(body.error.message);
       const page = (body.data ?? []).find((s) => s.object === 'page');
+      needPage();
 
       const apps = await graphGet<{ data?: Array<{ id?: string; subscribed_fields?: string[] }> }>(
         `${pageId}/subscribed_apps`
@@ -133,6 +139,7 @@ export async function collectStatus(): Promise<Status> {
     }),
 
     block(async () => {
+      needPage();
       const forms = await listLeadForms(pageId);
       // Seuls les formulaires qui annoncent des leads valent un appel.
       const withLeads = forms.filter((f) => (f.leads_count ?? 0) > 0);

@@ -21,8 +21,9 @@ services:
         sync: false
       - key: META_APP_SECRET
         sync: false
+      # Identifiant public de la Page Pause-Com : pas un secret.
       - key: META_PAGE_ID
-        sync: false
+        value: "112795731747614"
       - key: GRAPH_API_VERSION
         value: v26.0
       - key: GOOGLE_SERVICE_ACCOUNT_JSON
