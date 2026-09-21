@@ -16,7 +16,7 @@ import { requireEnv, optionalEnv, errorMessage } from './lib/env.js';
 import { fetchLead, fetchLeadDetail } from './lib/graph.js';
 import { appendRow, existingLeadIds, readLeadRows } from './lib/sheets.js';
 import { toRow, isTestLead } from './lib/leads.js';
-import { getStatus, recordActivity, invalidateStatus, currentVersion } from './lib/status.js';
+import { getStatus, recordActivity, invalidateStatus, currentVersion, onVersionChange } from './lib/status.js';
 import { getBusiness, invalidateBusiness, fetchConversation, fetchInstagramComments, fetchPostComments } from './lib/business.js';
 import { renderDashboard } from './dashboard.js';
 import { renderPrivacy, renderDeletion } from './legal.js';
@@ -207,9 +207,31 @@ app.get('/dashboard', requireDashboardAuth, async (req: Request, res: Response) 
   }
 });
 
-// Interrogé toutes les quelques secondes par la page : aucun appel à Meta.
+// Conservé pour les navigateurs sans EventSource, ou si le flux SSE échoue.
 app.get('/api/version', requireDashboardAuth, (_req: Request, res: Response) => {
   res.json({ version: currentVersion() });
+});
+
+// Flux temps réel : pousse la version dès qu'un événement Meta arrive (lead,
+// publication, commentaire, message), sans que la page n'ait à sonder.
+app.get('/api/stream', requireDashboardAuth, (req: Request, res: Response) => {
+  res.set({
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-store',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write(`data: ${currentVersion()}\n\n`);
+
+  const unsubscribe = onVersionChange((v) => res.write(`data: ${v}\n\n`));
+  // Certains hébergeurs/proxys coupent une connexion inactive : un
+  // commentaire SSE toutes les 25 s la maintient sans déclencher de rendu.
+  const heartbeat = setInterval(() => res.write(': ping\n\n'), 25_000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
 });
 
 app.get('/api/business', requireDashboardAuth, async (req: Request, res: Response) => {

@@ -284,9 +284,11 @@ messages. Ces données sont lues avec le jeton de Page et gardées 5 minutes.
 
 Temps réel : Meta est abonné aux champs `leadgen`, `feed`, `messages` et
 `ratings` de la Page, et `comments` et `mentions` d'Instagram. Chaque
-notification vide le cache et fait avancer `/api/version`, que la page
-interroge toutes les 10 secondes sans appeler Meta : elle se recharge dès
-qu'une nouveauté arrive.
+notification vide le cache et fait avancer la version ; le serveur la pousse
+aussitôt aux pages ouvertes via `/api/stream` (Server-Sent Events, sans appel
+à Meta), qui se rechargent dès qu'une nouveauté arrive — hors lecture d'une
+fiche ou saisie en cours. `/api/version` reste disponible en repli si le
+navigateur ne supporte pas SSE ou si le flux échoue durablement.
 
 ## Rapport Google Sheets
 
@@ -352,7 +354,8 @@ doit être mis à jour ici comme sur Render.
 | `GET` | `/dashboard` | tableau de bord (authentification) |
 | `GET` | `/api/status` | état en JSON (authentification) — 503 si un contrôle échoue |
 | `GET` | `/api/business` | données Business Suite en JSON (authentification) |
-| `GET` | `/api/version` | signal de fraîcheur interrogé par la page (authentification) |
+| `GET` | `/api/stream` | flux temps réel (SSE) du signal de fraîcheur (authentification) |
+| `GET` | `/api/version` | signal de fraîcheur en repli, sans SSE (authentification) |
 | `GET` | `/api/leads/:id` | fiche d'un lead (authentification) |
 | `GET` | `/api/conversations/:id` | messages d'une conversation (authentification) |
 | `GET` | `/api/comments/:source/:id` | commentaires d'une publication (authentification) |

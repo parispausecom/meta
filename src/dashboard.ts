@@ -731,23 +731,42 @@ ${businessScript}
     location.replace(location.pathname);
   }, REFRESH);
 
-  // Temps réel : le serveur signale chaque nouveauté reçue de Meta (lead,
-  // publication, commentaire, message). Cette vérification ne coûte aucun
-  // appel à Meta ; la page ne se recharge que si quelque chose a changé.
+  // Temps réel : le serveur pousse la version dès qu'un événement Meta arrive
+  // (lead, publication, commentaire, message) via Server-Sent Events, sans
+  // que la page n'ait à sonder. Elle ne se recharge que si quelque chose a
+  // changé, jamais pendant une lecture de fiche ou une saisie.
   var version = ${JSON.stringify(String(version))};
-  setInterval(function () {
+
+  function onVersion(v) {
+    if (v === undefined || String(v) === version) return;
     if (!auto.checked || document.hidden) return;
-    fetch('/api/version', { credentials: 'same-origin', cache: 'no-store' })
-      .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) {
-        if (!j || String(j.version) === version) return;
-        var typing = document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) && document.activeElement !== auto;
-        if (dialog.open || typing) return;
-        store.set('scroll', String(window.scrollY));
-        location.replace(location.pathname);
-      })
-      .catch(function () {});
-  }, 10000);
+    var typing = document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) && document.activeElement !== auto;
+    if (dialog.open || typing) return;
+    store.set('scroll', String(window.scrollY));
+    location.replace(location.pathname);
+  }
+
+  function pollVersion() {
+    setInterval(function () {
+      if (!auto.checked || document.hidden) return;
+      fetch('/api/version', { credentials: 'same-origin', cache: 'no-store' })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) { if (j) onVersion(String(j.version)); })
+        .catch(function () {});
+    }, 10000);
+  }
+
+  if ('EventSource' in window) {
+    var stream = new EventSource('/api/stream', { withCredentials: true });
+    stream.onmessage = function (e) { onVersion(e.data); };
+    // Repli si le flux échoue durablement (proxy qui coupe les connexions
+    // longues, etc.) : un sondage classique plutôt qu'un silence total.
+    stream.onerror = function () {
+      if (stream.readyState === EventSource.CLOSED) pollVersion();
+    };
+  } else {
+    pollVersion();
+  }
 
   var y = Number(store.get('scroll'));
   if (y) { window.scrollTo(0, y); store.set('scroll', ''); }

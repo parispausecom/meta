@@ -6,6 +6,7 @@
  * masquer l'état de Meta, et inversement. Un bloc en échec porte son message
  * d'erreur au lieu de faire échouer l'ensemble.
  */
+import { EventEmitter } from 'node:events';
 import { graphGet, listLeadForms, fetchFormLeads, debugToken } from './graph.js';
 import { readLeadRows, checkAccess } from './sheets.js';
 import { errorMessage } from './env.js';
@@ -40,14 +41,25 @@ const counters = { reçues: 0, écrites: 0, échecs: 0 };
 const startedAt = new Date();
 
 /**
- * Compteur de fraîcheur : il avance à chaque nouveauté reçue de Meta. La page
- * l'interroge toutes les quelques secondes, sans aucun appel à Meta, et se
- * recharge dès qu'il change.
+ * Compteur de fraîcheur : il avance à chaque nouveauté reçue de Meta. Un flux
+ * SSE (`/api/stream`) le pousse aux pages ouvertes dès qu'il change, sans
+ * aucun appel à Meta côté client.
  */
 let version = Date.now();
 export const currentVersion = () => version;
+
+const versionEvents = new EventEmitter();
+versionEvents.setMaxListeners(0);
+
 export function bumpVersion(): void {
   version = Date.now();
+  versionEvents.emit('change', version);
+}
+
+/** S'abonne aux nouvelles versions ; retourne une fonction de désabonnement. */
+export function onVersionChange(fn: (version: number) => void): () => void {
+  versionEvents.on('change', fn);
+  return () => versionEvents.off('change', fn);
 }
 
 export function recordActivity(entry: Omit<Activity, 'at'>): void {
