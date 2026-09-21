@@ -237,11 +237,16 @@ export interface ThreadMessage {
   message?: string;
   created_time?: string;
   from?: { id?: string; name?: string };
+  tags?: Edge<{ name?: string }>;
 }
 
 export async function fetchConversation(id: string): Promise<ThreadMessage[]> {
   const r = await graphGet<{ messages?: Edge<ThreadMessage> }>(id, {
-    fields: 'messages.limit(50){id,message,created_time,from}',
+    // `tags` distingue un message sans texte (pièce jointe) d'un message dont
+    // Meta masque volontairement le contenu (compte jugé indésirable) : dans
+    // ce second cas, `message` revient vide quelle que soit la permission
+    // accordée à l'app, et seule Business Suite l'affiche.
+    fields: 'messages.limit(50){id,message,created_time,from,tags}',
   });
   // Meta renvoie du plus récent au plus ancien ; un fil se lit dans l'autre sens.
   return (r.messages?.data ?? []).reverse();

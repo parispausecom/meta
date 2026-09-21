@@ -245,6 +245,7 @@ h3.sub { font: 600 12px var(--sans); letter-spacing: .1em; text-transform: upper
 .bubble { max-width: 85%; padding: 10px 14px; border-radius: 16px; background: var(--paper); border: 1px solid var(--line); }
 .bubble.mine { align-self: flex-end; background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .bubble small { display: block; opacity: .75; font-size: 11.5px; margin-top: 4px; }
+.bubble-filtered { font-style: italic; color: var(--muted); border-style: dashed; }
 .comments { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .comments li { padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; }
 .comments small { color: var(--muted); }
@@ -285,8 +286,15 @@ export const businessScript = `
           var list = h('ol', { class: 'thread', 'aria-label': 'Messages, du plus ancien au plus récent' });
           j.messages.forEach(function (m) {
             var mine = m.from && m.from.id === j.pageId;
-            list.appendChild(h('li', { class: 'bubble' + (mine ? ' mine' : '') }, [
-              h('span', { text: m.message || '(pièce jointe)' }),
+            var tags = (m.tags && m.tags.data || []).map(function (t) { return t.name; });
+            // Un texte vide signifie soit une pièce jointe, soit — si Meta
+            // classe l'expéditeur comme indésirable — un contenu qu'elle
+            // masque volontairement via l'API, y compris avec un jeton
+            // valide : seule Business Suite le montre alors.
+            var filtered = !m.message && tags.indexOf('filtered_content') !== -1;
+            var text = m.message || (filtered ? 'Message masqué par Meta (expéditeur signalé comme indésirable) — à lire dans Business Suite' : '(pièce jointe)');
+            list.appendChild(h('li', { class: 'bubble' + (mine ? ' mine' : '') + (filtered ? ' bubble-filtered' : '') }, [
+              h('span', { text: text }),
               h('small', { text: (mine ? 'Pause-Com' : (m.from && m.from.name) || 'Contact') + ' · ' + when(m.created_time) })
             ]));
           });
