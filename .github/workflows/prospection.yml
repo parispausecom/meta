@@ -1,0 +1,39 @@
+# Prospection Instagram : collecte complète des comptes engagés, enrichissement
+# des nouveaux et qualification par l'agent, une fois par jour.
+# Le webhook traite déjà chaque nouveau commentaire en temps réel ; ce passage
+# recalcule les compteurs et rattrape ce qu'un webhook manqué aurait laissé.
+
+name: Prospection Instagram
+
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prospection
+  cancel-in-progress: false
+
+jobs:
+  prospection:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      META_PAGE_ACCESS_TOKEN: ${{ secrets.META_PAGE_ACCESS_TOKEN }}
+      META_PAGE_ID: ${{ vars.META_PAGE_ID }}
+      GRAPH_API_VERSION: ${{ vars.GRAPH_API_VERSION }}
+      GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+      GOOGLE_SPREADSHEET_ID: ${{ secrets.GOOGLE_SPREADSHEET_ID }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Mettre à jour l'onglet Prospection Instagram
+        run: npm run -s prospection
