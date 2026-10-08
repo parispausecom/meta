@@ -23,6 +23,7 @@ await runCli(async () => {
   console.log(`\nCollecte des interactions de @${own}…`);
   const engagers = await collectAll(igId, own);
   console.log(`  ${engagers.length} compte(s)`);
+  if (!process.env.OPENAI_API_KEY) console.log('  agent désactivé : OPENAI_API_KEY absente');
 
   const r = await syncProspection(igId, engagers, {
     full: true,
