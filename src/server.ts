@@ -13,7 +13,8 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import express, { type Request, type Response } from 'express';
 import { requireEnv, optionalEnv, errorMessage } from './lib/env.js';
-import { fetchLead, fetchLeadDetail } from './lib/graph.js';
+import { fetchLead, fetchLeadDetail, resolveInstagramUserId } from './lib/graph.js';
+import { collectMedia, ownUsername, syncProspection } from './lib/prospection.js';
 import { appendRow, existingLeadIds, readLeadRows } from './lib/sheets.js';
 import { toRow, isTestLead } from './lib/leads.js';
 import { getStatus, recordActivity, invalidateStatus, currentVersion, onVersionChange } from './lib/status.js';
@@ -128,6 +129,10 @@ app.post('/webhook', (req: Request, res: Response) => {
         });
         continue;
       }
+      if (source === 'Instagram' && change.field === 'comments') {
+        const mediaId = (change.value as { media?: { id?: string } } | undefined)?.media?.id;
+        if (mediaId) queueProspection(mediaId);
+      }
       // Publication, commentaire, mention, avis… : le tableau de bord relira
       // Meta à sa prochaine actualisation.
       noteEvent(`${source} · ${EVENT_LABELS[change.field ?? ''] ?? change.field ?? 'événement'}`);
@@ -150,7 +155,32 @@ function noteEvent(kind: string): void {
   recordActivity({ status: 'événement', kind });
 }
 
-app.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
+// --- Prospection en temps réel ------------------------------------------------
+// Un commentaire Instagram relit sa publication, ajoute les nouveaux comptes à
+// l'onglet de prospection et les fait qualifier par l'agent. Les passages sont
+// mis en file : deux réécritures simultanées de l'onglet s'écraseraient.
+
+const pendingMedia = new Set<string>();
+let prospectionChain: Promise<void> = Promise.resolve();
+
+function queueProspection(mediaId: string): void {
+  // Une rafale de commentaires sur la même publication ne coûte qu'un passage.
+  if (pendingMedia.has(mediaId)) return;
+  pendingMedia.add(mediaId);
+  prospectionChain = prospectionChain.then(async () => {
+    pendingMedia.delete(mediaId);
+    try {
+      const igId = await resolveInstagramUserId(requireEnv('META_PAGE_ID'));
+      const engagers = await collectMedia(await ownUsername(igId), mediaId);
+      const r = await syncProspection(igId, engagers, { noAgent: !process.env.OPENAI_API_KEY, log: console.log });
+      console.log(`Prospection : ${r.added} nouveau(x) compte(s), ${r.ready} message(s) prêt(s).`);
+    } catch (err) {
+      console.error('Prospection échouée :', errorMessage(err));
+    }
+  });
+}
+
+app.get('/health',(_req: Request, res: Response) => res.json({ ok: true }));
 
 // Logo et icônes : publics, sans donnée sensible. Render lance le serveur
 // depuis la racine du dépôt, où se trouve `public/`.

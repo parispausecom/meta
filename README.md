@@ -51,6 +51,7 @@ et compilé par `tsc` pour la production.
 | `npm run status` | état de la production en direct, dans le terminal |
 | `npm run dashboard` | ouvre le tableau de bord de production |
 | `npm run sheet:report` | réécrit le rapport Google Sheets (onglets, graphiques) |
+| `npm run prospection` | met à jour l'onglet « Prospection Instagram » et fait qualifier les nouveaux comptes par l'agent |
 
 Arborescence :
 
