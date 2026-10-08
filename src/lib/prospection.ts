@@ -180,6 +180,13 @@ async function load(): Promise<Loaded> {
   return { sheetId: found, rows };
 }
 
+/** Lecture seule, pour le tableau de bord : un onglet absent donne une liste vide. */
+export async function readProspects(): Promise<Prospect[]> {
+  const meta = await sheetsApi<{ sheets: Array<{ properties: { title: string } }> }>('?fields=sheets.properties(title)');
+  if (!meta.sheets.some((s) => s.properties.title === TAB)) return [];
+  return (await load()).rows;
+}
+
 async function save(sheetId: number, rows: Prospect[]): Promise<void> {
   const values = [[...COLUMNS], ...rows.map((p) => COLUMNS.map((c) => p[c] ?? ''))];
   // Vidage préalable : une colonne retirée ou une ligne en moins ne laisse pas de résidu.

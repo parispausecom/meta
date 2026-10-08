@@ -10,6 +10,7 @@
  */
 import { graphGet } from './graph.js';
 import { errorMessage } from './env.js';
+import { readProspects, type Prospect } from './prospection.js';
 
 export type Part<T> = { ok: true; data: T } | { ok: false; error: string };
 
@@ -115,6 +116,8 @@ export interface Business {
   mentions: Part<IgMention[]>;
   pageInsights: Part<Series[]>;
   igInsights: Part<Array<{ name: string; title: string; value: number }>>;
+  /** Onglet « Prospection Instagram » du Sheet, tenu à jour par l'agent. */
+  prospection: Part<Prospect[]>;
 }
 
 /** Libellés français des métriques, Meta les renvoyant selon la langue de l'app. */
@@ -144,6 +147,8 @@ async function collect(): Promise<Business> {
     return id;
   });
 
+  // Lue en parallèle des appels Meta : le Sheet ne compte pas sur leur plafond.
+  const prospection = part(readProspects);
   const [page, ratings, conversations, instagram, mentions, pageInsights, igInsights] = await Promise.all([
     part(() =>
       graphGet<PageProfile>(pageId, {
@@ -212,6 +217,7 @@ async function collect(): Promise<Business> {
     mentions,
     pageInsights,
     igInsights,
+    prospection: await prospection,
   };
 }
 

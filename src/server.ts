@@ -174,6 +174,7 @@ function queueProspection(mediaId: string): void {
       const engagers = await collectMedia(await ownUsername(igId), mediaId);
       const r = await syncProspection(igId, engagers, { noAgent: !process.env.OPENAI_API_KEY, log: console.log });
       console.log(`Prospection : ${r.added} nouveau(x) compte(s), ${r.ready} message(s) prêt(s).`);
+      if (r.added || r.qualified) noteEvent('Instagram · prospection');
     } catch (err) {
       console.error('Prospection échouée :', errorMessage(err));
     }

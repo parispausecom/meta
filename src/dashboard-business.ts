@@ -5,6 +5,7 @@
  * sont insérées côté client par `textContent`.
  */
 import type { Business, Part, Series } from './lib/business.js';
+import type { Prospect } from './lib/prospection.js';
 
 const esc = (s: unknown) =>
   String(s ?? '').replace(
@@ -203,14 +204,116 @@ function messages(b: Business): string {
   </section>`;
 }
 
+const FOLLOW_UP = ['Envoyé', 'Répondu', 'Rendez-vous', 'Pas intéressé', 'Ne pas contacter'];
+const STATUS_CLASS: Record<string, string> = {
+  'Message prêt': 'status-ok',
+  Répondu: 'status-ok',
+  'Rendez-vous': 'status-ok',
+  'Pas intéressé': 'status-ko',
+  'Ne pas contacter': 'status-ko',
+};
+const CATEGORY_LABEL: Record<string, string> = {
+  particulier: 'Particulier',
+  createur: 'Créateur',
+  concurrent: 'Concurrent',
+  client: 'Client',
+  autre: 'Indéterminé',
+};
+
+function prospection(b: Business): string {
+  const head = (note: string) => `<div class="section-head">
+      <h2 id="h-prospection">Prospection Instagram</h2>
+      <p class="section-note">${note}</p>
+    </div>`;
+  if (!b.prospection.ok) {
+    return `<section id="prospection" aria-labelledby="h-prospection">${head('')}${unavailable(b.prospection, 'Onglet de prospection')}</section>`;
+  }
+  const all = b.prospection.data;
+  const prospects = all.filter((p) => p.Rôle === 'Prospect');
+  const discarded = prospects.filter((p) => p.Statut === 'Écarté');
+  const active = prospects
+    .filter((p) => p.Statut && !['Écarté', 'À qualifier'].includes(p.Statut))
+    .sort((a, b) => Number(b.Score || 0) - Number(a.Score || 0));
+  const count = (pred: (p: Prospect) => boolean) => prospects.filter(pred).length;
+  const ready = count((p) => p.Statut === 'Message prêt');
+  const todo = count((p) => p.Statut === 'À qualifier');
+
+  // Seule la présence de la clé est exposée, jamais sa valeur.
+  const agent = process.env.OPENAI_API_KEY
+    ? `Agent actif (${esc(process.env.OPENAI_MODEL || 'gpt-5-mini')})`
+    : '<strong>Agent inactif</strong> : OPENAI_API_KEY absente sur ce serveur';
+  const sheet = process.env.GOOGLE_SPREADSHEET_ID
+    ? ` · <a href="https://docs.google.com/spreadsheets/d/${esc(encodeURIComponent(process.env.GOOGLE_SPREADSHEET_ID))}/edit" target="_blank" rel="noopener">Suivi dans le Sheet<span class="sr-only"> (nouvel onglet)</span></a>`
+    : '';
+
+  const tile = (label: string, value: number, note: string) =>
+    `<li><div class="tile"><span class="tile-label">${esc(label)}</span><span class="tile-value">${num(value)}</span><span class="tile-note">${esc(note)}</span></div></li>`;
+  const byCategory = Object.entries(
+    discarded.reduce<Record<string, number>>((acc, p) => ((acc[p.Catégorie || 'autre'] = (acc[p.Catégorie || 'autre'] ?? 0) + 1), acc), {})
+  )
+    .sort((x, y) => y[1] - x[1])
+    .map(([c, n]) => `${n} ${(CATEGORY_LABEL[c] ?? c).toLowerCase()}${n > 1 ? 's' : ''}`)
+    .join(', ');
+
+  const profile = (p: Prospect) =>
+    `<a href="${esc(p.Profil || `https://www.instagram.com/${p.Compte}/`)}" target="_blank" rel="noopener">@${esc(p.Compte)}<span class="sr-only"> sur Instagram (nouvel onglet)</span></a>`;
+
+  const rows = active
+    .map((p) => {
+      const msg = p['Message proposé'] ?? '';
+      return `<tr>
+        <td data-label="Score" class="c-score">${esc(p.Score || '—')}<span class="sr-only"> sur 100</span></td>
+        <th scope="row" data-label="Compte">${profile(p)}${p.Nom ? `<span class="muted prospect-name">${esc(clip(p.Nom, 40))}</span>` : ''}</th>
+        <td data-label="Secteur">${esc(p.Secteur || '—')}</td>
+        <td data-label="Via">${p.Via ? esc(p.Via.split(', ').map((v) => '@' + v).join(', ')) : '—'}</td>
+        <td data-label="Statut"><span class="status ${STATUS_CLASS[p.Statut ?? ''] ?? 'status-neutral'}">${esc(p.Statut)}</span>${p['Envoyé le'] ? `<span class="muted prospect-name">le ${esc(p['Envoyé le'])}</span>` : ''}</td>
+        <td data-label="Message" class="c-msg">${
+          msg
+            ? `<details><summary>Lire<span class="sr-only"> le message proposé à @${esc(p.Compte)}</span></summary>
+              <p class="prospect-msg">${esc(msg)}</p>
+              <p class="muted prospect-reason">${esc(p.Raison)}</p>
+              <button type="button" class="copy" data-copy="${esc(msg)}">Copier le message<span class="sr-only"> pour @${esc(p.Compte)}</span></button></details>`
+            : `<span class="muted">${esc(clip(p.Raison, 90) || '—')}</span>`
+        }</td>
+      </tr>`;
+    })
+    .join('');
+
+  const discardedList = discarded
+    .map((p) => `<li>${profile(p)} <span class="chip">${esc(CATEGORY_LABEL[p.Catégorie ?? ''] ?? p.Catégorie ?? '—')}</span> <span class="muted">${esc(p.Raison)}</span></li>`)
+    .join('');
+
+  return `<section id="prospection" aria-labelledby="h-prospection">
+    ${head(`${agent}${sheet}`)}
+    <ul class="tiles">
+      ${tile('Comptes engagés', all.length, `${prospects.length} prospects potentiels`)}
+      ${tile('Messages prêts', ready, 'score ≥ 60, à envoyer')}
+      ${tile('Contactés', count((p) => FOLLOW_UP.includes(p.Statut ?? '')), `${count((p) => ['Répondu', 'Rendez-vous'].includes(p.Statut ?? ''))} réponse(s) ou rendez-vous`)}
+      ${tile('Écartés par l’agent', discarded.length, byCategory || 'aucun')}
+      ${todo ? tile('En attente de l’agent', todo, 'qualifiés au prochain passage') : ''}
+    </ul>
+    <h3 class="sub">Prospects qualifiés (${active.length})</h3>
+    <p class="muted prospect-help">L’envoi reste manuel : ouvrir le profil, coller le message, puis passer le statut à « Envoyé » dans le Sheet.</p>
+    <div class="card table-wrap">${
+      rows
+        ? `<table class="stack"><caption class="sr-only">Prospects qualifiés par l’agent, du score le plus élevé au plus bas</caption>
+          <thead><tr><th scope="col">Score</th><th scope="col">Compte</th><th scope="col">Secteur</th><th scope="col">Via</th><th scope="col">Statut</th><th scope="col">Message</th></tr></thead>
+          <tbody>${rows}</tbody></table>`
+        : '<p class="empty">Aucun prospect qualifié pour l’instant.</p>'
+    }</div>
+    ${discardedList ? `<details class="card discarded"><summary>Comptes écartés par l’agent (${discarded.length})</summary><ul>${discardedList}</ul></details>` : ''}
+  </section>`;
+}
+
 export const businessNav = `
     <li><a href="#audience">Audience</a></li>
     <li><a href="#instagram">Instagram</a></li>
     <li><a href="#facebook">Facebook</a></li>
-    <li><a href="#messages">Messages</a></li>`;
+    <li><a href="#messages">Messages</a></li>
+    <li><a href="#prospection">Prospection</a></li>`;
 
 export function renderBusiness(b: Business): string {
-  return [audience(b), instagram(b), facebook(b), messages(b)].join('\n');
+  return [audience(b), instagram(b), facebook(b), messages(b), prospection(b)].join('\n');
 }
 
 export const businessCss = `
@@ -249,11 +352,32 @@ h3.sub { font: 600 12px var(--sans); letter-spacing: .1em; text-transform: upper
 .comments { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .comments li { padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; }
 .comments small { color: var(--muted); }
+#prospection .tile-note { line-height: 1.35; }
+.c-score { font: 600 18px var(--serif); font-variant-numeric: tabular-nums; }
+.prospect-name { display: block; font-size: 12.5px; font-weight: 400; }
+.prospect-help { margin: -4px 0 12px; font-size: 13.5px; }
+.c-msg { min-width: 220px; }
+.c-msg summary, .discarded summary { cursor: pointer; color: var(--accent); font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+.prospect-msg { white-space: pre-line; margin: 6px 0; max-width: 46ch; }
+.prospect-reason { font-size: 12.5px; margin: 0 0 8px; }
+.copy { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--raised); color: var(--ink); font: 600 13px var(--sans); cursor: pointer; }
+.discarded { margin-top: 12px; padding: 4px 18px 12px; }
+.discarded ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 13.5px; }
+@media (max-width: 760px) { .c-msg { min-width: 0; text-align: left; } .c-msg details { text-align: left; } }
 @media (max-width: 760px) { .posts { grid-template-columns: repeat(2, 1fr); } .profile-stats { width: 100%; justify-content: space-around; } }
 `;
 
-/** Script client : panneaux de publication et de conversation. */
+/** Script client : panneaux de publication et de conversation, copie des messages. */
 export const businessScript = `
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('[data-copy]');
+    if (!btn) return;
+    var label = btn.innerHTML;
+    (navigator.clipboard ? navigator.clipboard.writeText(btn.dataset.copy) : Promise.reject()).then(
+      function () { btn.textContent = 'Copié ✓'; },
+      function () { btn.textContent = 'Copie impossible : sélectionner le texte'; }
+    ).then(function () { setTimeout(function () { btn.innerHTML = label; }, 2500); });
+  });
   function openPanel(el) {
     returnFocus = el;
     var kind = el.dataset.panel;
