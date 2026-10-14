@@ -22,7 +22,7 @@ function controller() {
   };
 }
 
-const UPDATED = '16 septembre 2026';
+const UPDATED = '14 octobre 2026';
 
 function layout(title: string, description: string, path: string, body: string): string {
   const origin = (process.env.RENDER_EXTERNAL_URL ?? '').replace(/\/$/, '');
@@ -102,12 +102,12 @@ export function renderPrivacy(): string {
   const mail = `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`;
   return layout(
     'Politique de confidentialité',
-    `Comment ${c.name} collecte, utilise et protège les données transmises via ses formulaires Facebook et Instagram.`,
+    `Comment ${c.name} collecte, utilise et protège les données transmises via ses formulaires Facebook et Instagram, et celles des comptes professionnels qui interagissent avec ses publications.`,
     '/confidentialite',
     `<h1>Politique de confidentialité</h1>
 <p class="meta">Dernière mise à jour : ${UPDATED}</p>
 
-<p>La présente politique décrit la manière dont ${esc(c.name)} traite les données personnelles transmises par l’intermédiaire de ses formulaires de contact publicitaires sur Facebook et Instagram (« Instant Forms » de Meta), ainsi que par l’application « Pausecom Leads » qui les rapatrie.</p>
+<p>La présente politique décrit la manière dont ${esc(c.name)} traite les données personnelles transmises par l’intermédiaire de ses formulaires de contact publicitaires sur Facebook et Instagram (« Instant Forms » de Meta), ainsi que par l’application « Pausecom Leads » qui les rapatrie. Elle décrit aussi la prospection menée auprès des comptes professionnels qui interagissent avec les publications Instagram de ${esc(c.name)}.</p>
 
 <h2>1. Responsable du traitement</h2>
 <p>${esc(c.name)}, ${esc(c.address)}. Contact : ${mail}.</p>
@@ -121,7 +121,13 @@ export function renderPrivacy(): string {
   <li>vos réponses aux questions du formulaire (par exemple votre profil ou le type d’accompagnement recherché) ;</li>
   <li>la date d’envoi, le formulaire utilisé et la plateforme (Facebook ou Instagram).</li>
 </ul>
-<p>Aucune autre donnée de votre compte Facebook ou Instagram n’est enregistrée : ni liste d’amis, ni publications, ni messages privés.</p>
+<p>Si vous commentez, mentionnez ou aimez une publication Instagram de ${esc(c.name)} (y compris une publication réalisée avec l’un de ses clients, lorsque ce client l’a accepté), et uniquement si votre compte est un compte professionnel :</p>
+<ul>
+  <li>votre nom d’utilisateur, ainsi que le nom, la biographie, le site web et le nombre d’abonnés affichés publiquement sur votre profil professionnel ;</li>
+  <li>le texte et la date de votre commentaire ou de votre mention, et la publication concernée ;</li>
+  <li>le suivi de nos échanges (message envoyé, réponse, refus d’être recontacté).</li>
+</ul>
+<p>Aucune autre donnée de votre compte Facebook ou Instagram n’est enregistrée : ni liste d’amis ou d’abonnés, ni messages privés autres que ceux que nous échangeons avec vous.</p>
 
 <h2>3. Finalités et base légale</h2>
 <table>
@@ -130,6 +136,7 @@ export function renderPrivacy(): string {
   <tbody>
     <tr><td>Vous recontacter pour répondre à votre demande d’information ou de devis</td><td>Mesures précontractuelles prises à votre demande (art. 6.1.b RGPD)</td></tr>
     <tr><td>Suivre et organiser les demandes reçues par l’agence</td><td>Intérêt légitime de ${esc(c.name)} (art. 6.1.f RGPD)</td></tr>
+    <tr><td>Proposer les services de l’agence aux professionnels qui ont interagi avec ses publications, par un message privé unique</td><td>Intérêt légitime de ${esc(c.name)} à prospecter des professionnels (art. 6.1.f RGPD) ; vous pouvez vous y opposer à tout moment</td></tr>
   </tbody>
 </table>
 <p>Vos données ne sont ni vendues, ni louées, ni utilisées pour de la publicité ciblée par des tiers.</p>
@@ -139,18 +146,19 @@ export function renderPrivacy(): string {
 <ul>
   <li><strong>Meta Platforms Ireland Ltd</strong> — formulaires Facebook et Instagram ;</li>
   <li><strong>Google Ireland Ltd</strong> — stockage dans Google Sheets ;</li>
+  <li><strong>OpenAI Ireland Ltd</strong> — analyse des profils professionnels publics et rédaction d’un projet de message, relu par l’équipe avant envoi ;</li>
   <li><strong>Render Services, Inc.</strong> — hébergement du serveur qui reçoit les demandes.</li>
 </ul>
 <p>Certains de ces prestataires peuvent traiter des données hors de l’Union européenne. Ces transferts sont encadrés par les clauses contractuelles types de la Commission européenne ou par le cadre de protection des données UE–États-Unis.</p>
 
 <h2>5. Durée de conservation</h2>
-<p>Les données sont conservées <strong>3 ans à compter du dernier contact</strong> de votre part, puis supprimées, conformément aux recommandations de la CNIL pour les données de prospects. Meta supprime de son côté les réponses aux formulaires au bout de 90 jours.</p>
+<p>Les données sont conservées <strong>3 ans à compter du dernier contact</strong> de votre part, puis supprimées, conformément aux recommandations de la CNIL pour les données de prospects. Meta supprime de son côté les réponses aux formulaires au bout de 90 jours. Les données de prospection sont conservées 3 ans à compter de votre dernière interaction ; si vous vous opposez à la prospection, seul votre nom d’utilisateur est gardé, pour ne plus vous recontacter.</p>
 
 <h2>6. Sécurité</h2>
 <p>Les échanges sont chiffrés (HTTPS). Les notifications de Meta sont authentifiées par signature cryptographique, l’accès au tableau de bord interne est protégé par mot de passe, et le stockage n’est partagé qu’avec un compte technique dédié.</p>
 
 <h2>7. Vos droits</h2>
-<p>Conformément au RGPD et à la loi Informatique et Libertés, vous disposez d’un droit d’accès, de rectification, d’effacement, de limitation, d’opposition et de portabilité de vos données. Pour les exercer, écrivez à ${mail} en précisant le nom et le numéro de téléphone indiqués dans le formulaire. Nous répondons sous un mois.</p>
+<p>Conformément au RGPD et à la loi Informatique et Libertés, vous disposez d’un droit d’accès, de rectification, d’effacement, de limitation, d’opposition et de portabilité de vos données. Pour les exercer, écrivez à ${mail} en précisant le nom et le numéro de téléphone indiqués dans le formulaire, ou votre nom d’utilisateur Instagram. Il suffit aussi de répondre à notre message pour ne plus être recontacté. Nous répondons sous un mois.</p>
 <p>Vous pouvez également introduire une réclamation auprès de la <a href="https://www.cnil.fr/fr/plaintes">CNIL</a>.</p>
 <p>Pour la suppression de vos données, consultez la page <a href="/suppression-des-donnees">Suppression des données</a>.</p>
 

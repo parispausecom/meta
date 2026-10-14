@@ -52,6 +52,9 @@ et compilé par `tsc` pour la production.
 | `npm run dashboard` | ouvre le tableau de bord de production |
 | `npm run sheet:report` | réécrit le rapport Google Sheets (onglets, graphiques) |
 | `npm run prospection` | met à jour l'onglet « Prospection Instagram » et fait qualifier les nouveaux comptes par l'agent |
+| `npm run prospection -- --like a,b --via client` | ajoute des likers relevés à la main dans l'app (la Graph API ne les expose pas) ; les comptes personnels sont ignorés |
+
+Depuis le tableau de bord (section Prospection) : formulaire « Ajouter des likers », et bouton « Envoyer en réponse privée » qui répond au dernier commentaire du prospect (Meta l'autorise une fois, dans les 7 jours suivant le commentaire, et exige l'accès avancé à `instagram_manage_messages`). La collecte chez les clients s'active avec `PROSPECTION_CLIENTS` (accord écrit du client) et `META_BUSINESS_TOKEN`.
 
 Arborescence :
 

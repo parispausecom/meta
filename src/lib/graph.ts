@@ -76,11 +76,12 @@ async function call<T>(
 
   if (method === 'GET') {
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
-    url.searchParams.set('access_token', token());
+    // Un jeton passé en paramètre (jeton d'utilisateur système, par exemple) prime sur celui de la Page.
+    if (!url.searchParams.has('access_token')) url.searchParams.set('access_token', token());
   } else {
     const body = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) body.set(k, String(v));
-    body.set('access_token', token());
+    if (!body.has('access_token')) body.set('access_token', token());
     init.body = body;
   }
 

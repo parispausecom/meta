@@ -14,7 +14,7 @@ import path from 'node:path';
 import express, { type Request, type Response } from 'express';
 import { requireEnv, optionalEnv, errorMessage } from './lib/env.js';
 import { fetchLead, fetchLeadDetail, resolveInstagramUserId } from './lib/graph.js';
-import { collectMedia, ownUsername, syncProspection } from './lib/prospection.js';
+import { addLikes, collectMedia, ownUsername, ProspectError, sendPrivateReply, syncProspection } from './lib/prospection.js';
 import { appendRow, existingLeadIds, readLeadRows } from './lib/sheets.js';
 import { toRow, isTestLead } from './lib/leads.js';
 import { getStatus, recordActivity, invalidateStatus, currentVersion, onVersionChange } from './lib/status.js';
@@ -161,13 +161,20 @@ function noteEvent(kind: string): void {
 // mis en file : deux réécritures simultanées de l'onglet s'écraseraient.
 
 const pendingMedia = new Set<string>();
-let prospectionChain: Promise<void> = Promise.resolve();
+let prospectionChain: Promise<unknown> = Promise.resolve();
+
+/** Toute écriture de l'onglet passe par cette file, webhook comme tableau de bord. */
+function enqueue<T>(task: () => Promise<T>): Promise<T> {
+  const run = prospectionChain.then(task);
+  prospectionChain = run.catch(() => {});
+  return run;
+}
 
 function queueProspection(mediaId: string): void {
   // Une rafale de commentaires sur la même publication ne coûte qu'un passage.
   if (pendingMedia.has(mediaId)) return;
   pendingMedia.add(mediaId);
-  prospectionChain = prospectionChain.then(async () => {
+  void enqueue(async () => {
     pendingMedia.delete(mediaId);
     try {
       const igId = await resolveInstagramUserId(requireEnv('META_PAGE_ID'));
@@ -295,6 +302,70 @@ app.get('/api/comments/:source/:id', requireDashboardAuth, async (req: Request, 
     res.json({ comments: source === 'instagram' ? await fetchInstagramComments(id) : await fetchPostComments(id) });
   } catch (err) {
     res.status(502).json({ error: errorMessage(err) });
+  }
+});
+
+// --- Actions de prospection depuis le tableau de bord -----------------------
+// Le navigateur renvoie seul l'authentification Basic, y compris depuis un
+// autre site : une action n'est acceptée qu'en JSON et depuis cette origine.
+function sameOrigin(req: Request, res: Response, next: () => void): void {
+  const origin = req.get('origin');
+  let host = '';
+  try { host = origin ? new URL(origin).host : ''; } catch { /* origine illisible */ }
+  if (req.is('application/json') && host && host === req.get('host')) {
+    next();
+    return;
+  }
+  res.status(403).json({ error: 'Requête refusée : origine non autorisée.' });
+}
+
+const IG_USERNAME = /^[a-z0-9._]{1,30}$/;
+const MAX_LIKES = 30;
+
+app.post('/api/prospects/likes', requireDashboardAuth, sameOrigin, async (req: Request, res: Response) => {
+  const { accounts, via } = (req.body ?? {}) as { accounts?: unknown; via?: unknown };
+  const list = (v: unknown) =>
+    [...new Set(String(v ?? '').split(/[\s,;]+/).map((u) => u.trim().replace(/^@/, '').replace(/\/$/, '').split('/').pop()!.toLowerCase()).filter(Boolean))];
+  const names = list(accounts);
+  const vias = list(via);
+  const invalid = [...names, ...vias].filter((u) => !IG_USERNAME.test(u));
+  if (!names.length || invalid.length) {
+    res.status(400).json({ error: invalid.length ? `Compte(s) invalide(s) : ${invalid.join(', ')}` : 'Aucun compte saisi.' });
+    return;
+  }
+  if (names.length > MAX_LIKES) {
+    res.status(400).json({ error: `${MAX_LIKES} comptes au plus par envoi : l'agent les qualifie un par un.` });
+    return;
+  }
+  try {
+    const lines: string[] = [];
+    const log = (l: string) => { lines.push(l.trim()); console.log(l); };
+    const { report, kept } = await enqueue(async () => {
+      const igId = await resolveInstagramUserId(requireEnv('META_PAGE_ID'));
+      const engagers = await addLikes(igId, await ownUsername(igId), names, vias, log);
+      const sync = await syncProspection(igId, engagers, { noAgent: !process.env.OPENAI_API_KEY, log });
+      return { report: sync, kept: engagers.length };
+    });
+    noteEvent('Instagram · likers ajoutés');
+    res.json({ ...report, kept, skipped: names.length - kept, log: lines });
+  } catch (err) {
+    res.status(502).json({ error: errorMessage(err) });
+  }
+});
+
+app.post('/api/prospects/:account/reply', requireDashboardAuth, sameOrigin, async (req: Request, res: Response) => {
+  const account = String(req.params.account ?? '').toLowerCase();
+  const text = String((req.body as { text?: unknown } | undefined)?.text ?? '').trim();
+  if (!IG_USERNAME.test(account) || !text || text.length > 1000) {
+    res.status(400).json({ error: !text ? 'Message vide.' : 'Compte ou message invalide (1 000 caractères au plus).' });
+    return;
+  }
+  try {
+    const p = await enqueue(() => sendPrivateReply(requireEnv('META_PAGE_ID'), account, text));
+    noteEvent('Instagram · message de prospection envoyé');
+    res.json({ ok: true, sentOn: p['Envoyé le'] });
+  } catch (err) {
+    res.status(err instanceof ProspectError ? 409 : 502).json({ error: errorMessage(err) });
   }
 });
 

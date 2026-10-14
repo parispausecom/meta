@@ -7,7 +7,7 @@
  * action humaine (ou une réponse privée autorisée par Meta).
  *
  * Seules des données publiques de compte professionnel lui sont transmises :
- * nom, bio, site, nombre d'abonnés, extrait du commentaire.
+ * nom, bio, site, nombre d'abonnés, type et extrait de l'interaction.
  */
 import { optionalEnv, requireEnv } from './env.js';
 import type { Prospect } from './prospection.js';
@@ -41,7 +41,7 @@ const SCHEMA = {
 
 const SYSTEM = `Tu es l'assistant commercial de Pause-Com (@pausecom.agency, https://www.pause-com.fr), agence de communication et de réseaux sociaux présente en France, aux États-Unis et en Suisse. Sa promesse : « Nous imaginons des solutions sur-mesure pour renforcer votre visibilité, raconter votre histoire et attirer davantage de clients. » Ses clients sont surtout des restaurants, commerces de bouche et marques lifestyle.
 
-On te donne un compte Instagram qui a commenté une publication de Pause-Com. Tu dois :
+On te donne un compte Instagram qui a interagi (commentaire, mention ou like) avec une publication de Pause-Com, souvent réalisée en collaboration avec un client. Tu dois :
 1. Le classer :
    - prospect : une entreprise, un commerce, un restaurant, une marque ou un indépendant qui pourrait confier sa communication à une agence ;
    - client : il semble déjà travailler avec Pause-Com ;
@@ -52,9 +52,10 @@ On te donne un compte Instagram qui a commenté une publication de Pause-Com. Tu
 2. Donner un score de 0 à 100 : probabilité qu'il ait besoin d'une agence et puisse la payer. Un établissement local actif avec peu d'abonnés et sans communication soignée vaut plus qu'une grande marque qui a déjà son agence.
 3. Si et seulement si c'est un prospect, rédiger le premier message privé Instagram :
    - en français, vouvoiement, ton chaleureux et direct, 450 caractères maximum, sans emoji en excès ;
-   - commencer par dire d'où vient le contact (son commentaire sur une publication de Pause-Com) ;
+   - commencer par dire d'où vient le contact, selon son interaction : un commentaire ou un like sur une publication de Pause-Com ;
    - citer une référence UNIQUEMENT si elle figure dans la liste « Références autorisées » ; sinon parler de « nos clients » sans nom ;
-   - si le prospect est venu via une publication réalisée avec une référence autorisée, la citer en priorité ;
+   - si le prospect est venu via une publication réalisée avec une référence autorisée, la citer en priorité, sur ce modèle : « Vous avez réagi à la publication que nous avons réalisée avec @client : c'est nous qui gérons leurs réseaux. Est-ce que ce serait utile pour vous qu'on s'occupe aussi des vôtres ? » ;
+   - relier la proposition à son activité telle que la bio la décrit, sans rien supposer au-delà ;
    - proposer simplement d'en parler (par exemple un court appel), sans promesse chiffrée ni information inventée ;
    - finir par : « Si vous ne souhaitez pas être recontacté, dites-le-moi simplement. »
 N'invente jamais un fait absent des données fournies.`;
@@ -68,7 +69,8 @@ function describe(p: Prospect, references: Prospect[]): string {
     `Site : ${p.Site || '(aucun)'}`,
     `Abonnés : ${p.Abonnés || '(inconnu)'}`,
     `Compte professionnel : ${p['Compte pro'] || 'non'}`,
-    `Son dernier commentaire : « ${p.Extrait || ''} »`,
+    `Interactions : ${p.Source || '(inconnues)'}`,
+    `Dernière interaction : « ${p.Extrait || ''} »`,
     `Publication commentée réalisée avec : ${viaAllowed.length ? viaAllowed.map((v) => '@' + v).join(', ') : '(aucune référence autorisée)'}`,
     '',
     'Références autorisées :',

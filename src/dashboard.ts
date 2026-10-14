@@ -722,10 +722,17 @@ ${businessScript}
   // ── Actualisation automatique ──
   // Jamais pendant une lecture de fiche ou une saisie (WCAG 2.2.1) ; désactivable.
   var auto = document.getElementById('auto');
+  // Saisie en cours, brouillon de message modifié ou envoi en vol : on ne recharge pas.
+  function busy() {
+    var el = document.activeElement;
+    if (el && /INPUT|SELECT|TEXTAREA/.test(el.tagName) && el !== auto) return true;
+    if (document.querySelector('[aria-busy="true"]')) return true;
+    return [].some.call(document.querySelectorAll('textarea'), function (t) { return t.value !== t.defaultValue; });
+  }
   auto.checked = store.get('auto') !== 'off';
   auto.addEventListener('change', function () { store.set('auto', auto.checked ? 'on' : 'off'); });
   setInterval(function () {
-    var typing = document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) && document.activeElement !== auto;
+    var typing = busy();
     if (!auto.checked || dialog.open || typing || document.hidden) return;
     store.set('scroll', String(window.scrollY));
     location.replace(location.pathname);
@@ -740,7 +747,7 @@ ${businessScript}
   function onVersion(v) {
     if (v === undefined || String(v) === version) return;
     if (!auto.checked || document.hidden) return;
-    var typing = document.activeElement && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName) && document.activeElement !== auto;
+    var typing = busy();
     if (dialog.open || typing) return;
     store.set('scroll', String(window.scrollY));
     location.replace(location.pathname);

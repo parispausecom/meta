@@ -5,7 +5,7 @@
  * sont insérées côté client par `textContent`.
  */
 import type { Business, Part, Series } from './lib/business.js';
-import type { Prospect } from './lib/prospection.js';
+import { canReplyPrivately, privateRepliesEnabled, type Prospect } from './lib/prospection.js';
 
 const esc = (s: unknown) =>
   String(s ?? '').replace(
@@ -259,8 +259,17 @@ function prospection(b: Business): string {
     `<a href="${esc(p.Profil || `https://www.instagram.com/${p.Compte}/`)}" target="_blank" rel="noopener">@${esc(p.Compte)}<span class="sr-only"> sur Instagram (nouvel onglet)</span></a>`;
 
   const rows = active
-    .map((p) => {
+    .map((p, i) => {
       const msg = p['Message proposé'] ?? '';
+      const sendable = ['Message prêt', 'Qualifié'].includes(p.Statut ?? '');
+      // Réponse privée possible : bouton d'envoi. Sinon, copie et envoi à la main.
+      const send = !sendable
+        ? ''
+        : !privateRepliesEnabled()
+          ? ''
+          : canReplyPrivately(p)
+          ? `<button type="button" class="copy primary-btn" data-reply="${esc(p.Compte)}" data-source="msg-${i}">Envoyer en réponse privée<span class="sr-only"> à @${esc(p.Compte)}</span></button>`
+          : `<span class="muted prospect-reason">${p.Commentaire ? 'Commentaire de plus de 7 jours' : 'Pas de commentaire récent'} : envoi à la main depuis Instagram.</span>`;
       return `<tr>
         <td data-label="Score" class="c-score">${esc(p.Score || '—')}<span class="sr-only"> sur 100</span></td>
         <th scope="row" data-label="Compte">${profile(p)}${p.Nom ? `<span class="muted prospect-name">${esc(clip(p.Nom, 40))}</span>` : ''}</th>
@@ -270,14 +279,21 @@ function prospection(b: Business): string {
         <td data-label="Message" class="c-msg">${
           msg
             ? `<details><summary>Lire<span class="sr-only"> le message proposé à @${esc(p.Compte)}</span></summary>
-              <p class="prospect-msg">${esc(msg)}</p>
+              <label class="sr-only" for="msg-${i}">Message à @${esc(p.Compte)}</label>
+              ${sendable ? `<textarea id="msg-${i}" class="prospect-msg" rows="7" maxlength="1000">${esc(msg)}</textarea>` : `<p id="msg-${i}" class="prospect-msg">${esc(msg)}</p>`}
               <p class="muted prospect-reason">${esc(p.Raison)}</p>
-              <button type="button" class="copy" data-copy="${esc(msg)}">Copier le message<span class="sr-only"> pour @${esc(p.Compte)}</span></button></details>`
+              <div class="prospect-actions">
+                <button type="button" class="copy" data-copy-from="msg-${i}">Copier le message<span class="sr-only"> pour @${esc(p.Compte)}</span></button>
+                ${send}
+              </div>
+              <p class="prospect-feedback" role="status" aria-live="polite"></p></details>`
             : `<span class="muted">${esc(clip(p.Raison, 90) || '—')}</span>`
         }</td>
       </tr>`;
     })
     .join('');
+
+  const references = [...new Set(all.flatMap((p) => (p.Via ?? '').split(', ').filter(Boolean)))].sort();
 
   const discardedList = discarded
     .map((p) => `<li>${profile(p)} <span class="chip">${esc(CATEGORY_LABEL[p.Catégorie ?? ''] ?? p.Catégorie ?? '—')}</span> <span class="muted">${esc(p.Raison)}</span></li>`)
@@ -292,8 +308,27 @@ function prospection(b: Business): string {
       ${tile('Écartés par l’agent', discarded.length, byCategory || 'aucun')}
       ${todo ? tile('En attente de l’agent', todo, 'qualifiés au prochain passage') : ''}
     </ul>
+    <h3 class="sub" id="h-likers">Ajouter des likers</h3>
+    <form class="card likers" id="likers-form" aria-labelledby="h-likers" novalidate>
+      <p class="muted prospect-help">Meta ne donne pas la liste des likers : relevez dans l’application les comptes de commerces ou de marques qui ont aimé une publication, puis collez-les ici. Les comptes personnels sont ignorés.</p>
+      <div class="field">
+        <label for="likers-accounts">Comptes Instagram <span class="muted">(un par ligne, ou séparés par des virgules ; 30 au plus)</span></label>
+        <textarea id="likers-accounts" name="accounts" rows="4" required aria-describedby="likers-feedback" placeholder="boulangerie.exemple&#10;@cafe.exemple"></textarea>
+      </div>
+      <div class="field">
+        <label for="likers-via">Publication réalisée avec <span class="muted">(compte du client, facultatif)</span></label>
+        <input id="likers-via" name="via" type="text" autocomplete="off" spellcheck="false" list="likers-refs" placeholder="restaurant.irwin">
+        <datalist id="likers-refs">${references.map((r) => `<option value="${esc(r)}"></option>`).join('')}</datalist>
+      </div>
+      <button type="submit" class="copy primary-btn">Ajouter et qualifier</button>
+      <p id="likers-feedback" class="prospect-feedback" role="status" aria-live="polite"></p>
+    </form>
     <h3 class="sub">Prospects qualifiés (${active.length})</h3>
-    <p class="muted prospect-help">L’envoi reste manuel : ouvrir le profil, coller le message, puis passer le statut à « Envoyé » dans le Sheet.</p>
+    <p class="muted prospect-help">${
+      privateRepliesEnabled()
+        ? 'Relisez et ajustez chaque message. « Envoyer en réponse privée » répond au dernier commentaire du compte (possible 7 jours après le commentaire) et passe la ligne à « Envoyé » ; sinon, copiez le message et envoyez-le depuis Instagram.'
+        : 'Relisez et ajustez chaque message, copiez-le et envoyez-le depuis Instagram, puis passez le statut à « Envoyé » dans le Sheet. L’envoi en un clic s’activera après l’accès avancé Meta à instagram_manage_messages.'
+    }</p>
     <div class="card table-wrap">${
       rows
         ? `<table class="stack"><caption class="sr-only">Prospects qualifiés par l’agent, du score le plus élevé au plus bas</caption>
@@ -360,6 +395,19 @@ h3.sub { font: 600 12px var(--sans); letter-spacing: .1em; text-transform: upper
 .c-msg summary, .discarded summary { cursor: pointer; color: var(--accent); font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
 .prospect-msg { white-space: pre-line; margin: 6px 0; max-width: 46ch; }
 .prospect-reason { font-size: 12.5px; margin: 0 0 8px; }
+.prospect-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+textarea.prospect-msg { width: 100%; max-width: 52ch; font: inherit; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--ink); }
+.prospect-feedback { margin: 8px 0 0; font-size: 13.5px; font-weight: 600; }
+.prospect-feedback:empty { display: none; }
+.prospect-feedback.error { color: var(--accent); }
+.likers { padding: 16px 18px; display: grid; gap: 12px; margin-bottom: 8px; }
+.likers .field { display: grid; gap: 6px; }
+.likers label { font-weight: 600; font-size: 14px; }
+.likers textarea, .likers input { font: inherit; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 12px; background: var(--surface); color: var(--ink); width: 100%; max-width: 52ch; }
+.likers button { justify-self: start; }
+.primary-btn { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.primary-btn[aria-busy="true"] { opacity: .7; cursor: progress; }
+.copy:focus-visible, .likers textarea:focus-visible, .likers input:focus-visible, textarea.prospect-msg:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .copy { min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--raised); color: var(--ink); font: 600 13px var(--sans); cursor: pointer; }
 .discarded { margin-top: 12px; padding: 4px 18px 12px; }
 .discarded ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 13.5px; }
@@ -369,11 +417,53 @@ h3.sub { font: 600 12px var(--sans); letter-spacing: .1em; text-transform: upper
 
 /** Script client : panneaux de publication et de conversation, copie des messages. */
 export const businessScript = `
+  function postJson(url, data) {
+    return fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw new Error(j.error || 'Erreur ' + r.status); return j; }); });
+  }
+  function feedback(el, text, error) {
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('error', Boolean(error));
+  }
+  var likers = document.getElementById('likers-form');
+  if (likers) likers.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var btn = likers.querySelector('button[type=submit]');
+    var out = document.getElementById('likers-feedback');
+    var accounts = likers.elements.accounts.value;
+    if (!accounts.trim()) { feedback(out, 'Saisissez au moins un compte.', true); likers.elements.accounts.focus(); return; }
+    btn.disabled = true; btn.setAttribute('aria-busy', 'true');
+    feedback(out, 'Vérification des profils et qualification par l’agent… (quelques secondes par compte)');
+    postJson('/api/prospects/likes', { accounts: accounts, via: likers.elements.via.value })
+      .then(function (j) {
+        feedback(out, j.kept + ' compte(s) ajouté(s) ou mis à jour, ' + j.skipped + ' ignoré(s) (comptes personnels ou introuvables), ' + j.ready + ' message(s) prêt(s). Le tableau se met à jour.');
+        likers.elements.accounts.value = '';
+      })
+      .catch(function (err) { feedback(out, 'Échec : ' + err.message, true); })
+      .then(function () { btn.disabled = false; btn.removeAttribute('aria-busy'); });
+  });
   document.addEventListener('click', function (e) {
-    var btn = e.target.closest && e.target.closest('[data-copy]');
+    var send = e.target.closest && e.target.closest('[data-reply]');
+    if (!send) return;
+    var cell = send.closest('details');
+    var out = cell && cell.querySelector('.prospect-feedback');
+    var text = document.getElementById(send.dataset.source).value.trim();
+    if (!text) { feedback(out, 'Le message est vide.', true); return; }
+    if (!confirm('Envoyer ce message en privé à @' + send.dataset.reply + ' ?')) return;
+    send.disabled = true; send.setAttribute('aria-busy', 'true');
+    feedback(out, 'Envoi…');
+    postJson('/api/prospects/' + encodeURIComponent(send.dataset.reply) + '/reply', { text: text })
+      .then(function () { feedback(out, 'Envoyé ✓ — statut passé à « Envoyé ».'); send.remove(); })
+      .catch(function (err) { feedback(out, 'Échec : ' + err.message, true); send.disabled = false; send.removeAttribute('aria-busy'); });
+  });
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('[data-copy-from]');
     if (!btn) return;
+    var src = document.getElementById(btn.dataset.copyFrom);
+    var value = src ? ('value' in src ? src.value : src.textContent) : '';
     var label = btn.innerHTML;
-    (navigator.clipboard ? navigator.clipboard.writeText(btn.dataset.copy) : Promise.reject()).then(
+    (navigator.clipboard ? navigator.clipboard.writeText(value) : Promise.reject()).then(
       function () { btn.textContent = 'Copié ✓'; },
       function () { btn.textContent = 'Copie impossible : sélectionner le texte'; }
     ).then(function () { setTimeout(function () { btn.innerHTML = label; }, 2500); });

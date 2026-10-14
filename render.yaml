@@ -37,3 +37,13 @@ services:
         value: pausecom
       - key: DASHBOARD_PASSWORD
         sync: false
+      # Agent de prospection et collecte chez les clients consentants.
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: META_BUSINESS_TOKEN
+        sync: false
+      - key: PROSPECTION_CLIENTS
+        sync: false
+      # « on » après l'accès avancé Meta à instagram_manage_messages.
+      - key: INSTAGRAM_PRIVATE_REPLIES
+        sync: false
