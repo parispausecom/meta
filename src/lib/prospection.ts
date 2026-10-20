@@ -147,12 +147,17 @@ export async function ownUsername(igId: string): Promise<string> {
 export async function collectAll(igId: string, own: string, log: (line: string) => void = () => {}): Promise<Engager[]> {
   const c = new Collector(own);
   const media = await graphGetAll<Media>(`${igId}/media`, { fields: MEDIA_FIELDS });
-  for (const m of media.filter((x) => (x.comments_count ?? 0) > 0)) await c.media(m);
+  const commented = media.filter((x) => (x.comments_count ?? 0) > 0);
+  for (const m of commented) await c.media(m);
+  log(`  ${media.length} publication(s) lue(s), ${commented.length} avec des commentaires`);
 
+  // Pages de 10 : depuis le 15/10/2026, Meta ne sert plus 25 ou 50 mentions avec
+  // leur légende dans son délai et répond « reduce the amount of data ».
   const tags = await graphGetAll<{ username?: string; timestamp?: string; caption?: string }>(`${igId}/tags`, {
     fields: 'username,timestamp,caption',
-  }, 50);
+  }, 10, log);
   for (const t of tags) c.note(t.username, 'mentions', t.timestamp, t.caption);
+  log(`  ${tags.length} mention(s) lue(s)`);
 
   await collectClients(c, log);
   return [...c.people.values()];

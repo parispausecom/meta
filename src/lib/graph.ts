@@ -168,6 +168,14 @@ export async function fetchLead(leadId: string): Promise<Lead> {
 const MAX_PAGES = 200;
 
 /**
+ * « Please reduce the amount of data you're asking for » (code 1, HTTP 500) :
+ * Meta n'a pas pu servir la page dans son délai, souvent au bout d'une minute.
+ * La même requête passe avec un `limit` plus petit.
+ */
+export const isTooMuchData = (err: unknown): boolean =>
+  err instanceof Error && /reduce the amount of data/i.test(err.message);
+
+/**
  * Parcourt une collection paginée jusqu'au bout.
  *
  * Meta plafonne silencieusement `limit` (souvent à 25 pour les leads, quelle
@@ -178,7 +186,8 @@ const MAX_PAGES = 200;
 export async function graphGetAll<T>(
   path: string,
   params: GraphParams = {},
-  pageSize = 100
+  pageSize = 100,
+  log: (line: string) => void = () => {}
 ): Promise<T[]> {
   const items: T[] = [];
   let after: string | undefined;
@@ -187,7 +196,20 @@ export async function graphGetAll<T>(
     const query: GraphParams = { ...params, limit: pageSize };
     if (after) query.after = after;
 
-    const body = await graphGet<Edge<T>>(path, query);
+    let body: Edge<T>;
+    try {
+      body = await graphGet<Edge<T>>(path, query);
+    } catch (err) {
+      // Page trop lourde à servir dans le temps imparti par Meta : on relit la
+      // même page en plus petit, et cette taille vaut pour la suite.
+      if (pageSize > 1 && isTooMuchData(err)) {
+        pageSize = Math.floor(pageSize / 2);
+        log(`  ${path.split('/').pop()} : Meta demande moins de données, pages de ${pageSize}`);
+        page--;
+        continue;
+      }
+      throw err;
+    }
     items.push(...(body.data ?? []));
 
     if (!body.paging?.next) return items;
