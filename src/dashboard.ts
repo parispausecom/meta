@@ -121,7 +121,7 @@ export function renderDashboard(s: Status, b: Business, refreshSeconds: number, 
   const leadRows = rows
     .map((r) => {
       const search = [r[1], r[2], r[3], r[4], prettify(r[5])].join(' ').toLowerCase();
-      return `<tr data-id="${esc(r[6])}" data-date="${esc(r[0])}" data-month="${monthKey(r[0])}" data-profile="${esc(r[5])}" data-search="${esc(search)}">
+      return `<tr data-id="${esc(r[6])}" data-unread="lead:${esc(r[6])}" data-date="${esc(r[0])}" data-month="${monthKey(r[0])}" data-profile="${esc(r[5])}" data-search="${esc(search)}">
         <td data-label="Date" class="c-date"><time datetime="${esc(r[0])}">${dateTime(r[0])}</time></td>
         <th scope="row" data-label="Nom" class="c-name"><button type="button" class="link" data-open="${esc(r[6])}" aria-haspopup="dialog">${esc(r[1] || 'Sans nom')}</button></th>
         <td data-label="Téléphone">${r[3] ? `<a href="tel:${esc(r[3])}">${esc(r[3])}</a>` : '<span class="muted">—</span>'}</td>
@@ -134,7 +134,7 @@ export function renderDashboard(s: Status, b: Business, refreshSeconds: number, 
 
   const activityRows = s.server.activity
     .map(
-      (a) => `<tr>
+      (a) => `<tr data-unread="activite:${esc(a.at)}">
         <td data-label="Reçu" class="c-date"><time datetime="${esc(a.at)}">${dateTime(a.at)}</time></td>
         <td data-label="Résultat"><span class="status status-${a.status === 'échec' ? 'ko' : a.status === 'écrit' ? 'ok' : 'neutral'}">${esc(a.status)}</span></td>
         <th scope="row" data-label="Élément">${a.leadId ? `<button type="button" class="link" data-open="${esc(a.leadId)}" aria-haspopup="dialog">${esc(a.name || a.leadId)}</button>` : esc(a.kind ?? '—')}</th>
@@ -353,6 +353,14 @@ footer { border-top: 1px solid var(--line); }
 footer p { margin: 0; }
 .footer-links { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
 .footer-links a { color: var(--ink); }
+/* Non lus : badge texte, jamais la couleur seule */
+.is-unread { background: var(--accent-soft); }
+.post.is-unread { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow); }
+.unread-badge { display: inline-block; margin-right: 8px; padding: 1px 8px; border-radius: 999px; background: var(--accent); color: var(--surface); font: 600 11px/1.6 var(--sans); letter-spacing: .02em; white-space: nowrap; vertical-align: middle; }
+.nav-unread { display: inline-block; margin-left: 6px; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--surface); font: 600 11px/1.6 var(--sans); text-align: center; }
+.section-head:has(.unread-tools) .section-note { margin-left: auto; }
+.unread-tools { display: flex; gap: 4px 10px; align-items: center; flex-wrap: wrap; font-size: 13.5px; font-weight: 600; color: var(--accent); }
+.state.is-new::before { background: #ff7a6e; box-shadow: 0 0 0 4px #ff7a6e2e; }
 ${businessCss}
 </style>
 </head>
@@ -369,6 +377,11 @@ ${businessCss}
     </div>
     <div class="masthead-actions">
       <p class="state${s.healthy ? '' : ' is-ko'}" role="status">${esc(statusText)}</p>
+    </div>
+    <div class="masthead-actions" id="unread-bar" hidden>
+      <p class="state is-new" id="unread-total" role="status"></p>
+      <button type="button" class="btn btn-ghost" id="unread-first">Voir la première</button>
+      <button type="button" class="btn btn-ghost" id="unread-all">Tout marquer comme lu</button>
     </div>
     <div class="masthead-actions">
       ${sheetUrl ? `<a class="btn btn-ghost" href="${esc(sheetUrl)}" target="_blank" rel="noopener">Ouvrir le Google Sheet<span class="sr-only"> (nouvel onglet)</span></a>` : ''}
@@ -773,6 +786,138 @@ ${businessScript}
     };
   } else {
     pollVersion();
+  }
+
+  // ── Non lus ──
+  // État propre à chaque navigateur (localStorage) : la page n'a qu'un compte
+  // partagé, le serveur ne sait pas qui la consulte. Un élément est non lu tant
+  // que sa clé n'a jamais été vue ici, et sa clé change avec lui (nouveau
+  // message dans une conversation, nouveau statut d'un prospect). Lire un
+  // élément, c'est l'ouvrir ou le marquer comme lu : un rechargement ne suffit
+  // pas, sinon l'actualisation automatique effacerait tout.
+  var SEEN = 'pausecom-lu-v1';
+  var KEEP = 180 * 86400000;
+  var seen;
+  try { seen = JSON.parse(localStorage.getItem(SEEN) || 'null'); } catch (e) { seen = undefined; }
+  function saveSeen() { try { localStorage.setItem(SEEN, JSON.stringify(seen)); } catch (e) {} }
+  var unreadBar = document.getElementById('unread-bar');
+  var unreadTotal = document.getElementById('unread-total');
+
+  function srText(text) { var s = document.createElement('span'); s.className = 'sr-only'; s.textContent = text; return s; }
+  function plural(n, word) { return n + ' ' + word + (n > 1 ? 's' : ''); }
+  function slot(el) {
+    return el.querySelector('[data-unread-slot]') || (el.tagName === 'TR' ? (el.querySelector('th') || el.cells[0]) : el);
+  }
+  function setUnread(el) {
+    el.classList.add('is-unread');
+    var badge = document.createElement('span');
+    badge.className = 'unread-badge';
+    badge.textContent = 'Non lu';
+    var target = slot(el);
+    target.insertBefore(badge, target.firstChild);
+    // Un bouton à aria-label masque son contenu : l'état passe dans le libellé.
+    var label = el.getAttribute('aria-label');
+    if (label) { el.dataset.label = label; el.setAttribute('aria-label', label + ', non lu'); }
+  }
+  function setRead(el) {
+    if (!el.classList.contains('is-unread')) return;
+    el.classList.remove('is-unread');
+    var badge = el.querySelector('.unread-badge');
+    if (badge) badge.remove();
+    if (el.dataset.label) el.setAttribute('aria-label', el.dataset.label);
+    seen[el.dataset.unread] = Date.now();
+  }
+  function unreadIn(root) { return [].slice.call(root.querySelectorAll('.is-unread')); }
+  function focusSection(section) {
+    var title = section.querySelector('h2');
+    if (!title) return;
+    title.setAttribute('tabindex', '-1');
+    title.focus();
+  }
+
+  function renderUnread() {
+    document.querySelectorAll('main section[id]').forEach(function (section) {
+      var n = unreadIn(section).length;
+      var link = document.querySelector('.sections a[href="#' + section.id + '"]');
+      var navBadge = link && link.querySelector('.nav-unread');
+      if (link && n) {
+        if (!navBadge) { navBadge = document.createElement('span'); navBadge.className = 'nav-unread'; link.appendChild(navBadge); }
+        navBadge.textContent = String(n);
+        navBadge.appendChild(srText(n > 1 ? ' non lus' : ' non lu'));
+      } else if (navBadge) navBadge.remove();
+
+      var head = section.querySelector('.section-head');
+      var tools = head && head.querySelector('.unread-tools');
+      if (head && n) {
+        if (!tools) {
+          tools = document.createElement('div');
+          tools.className = 'unread-tools';
+          var text = document.createElement('span');
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn-reset';
+          btn.textContent = 'Marquer comme lu';
+          btn.appendChild(srText(' : section ' + (section.querySelector('h2') || {}).textContent));
+          btn.addEventListener('click', function () {
+            unreadIn(section).forEach(setRead);
+            saveSeen();
+            renderUnread();
+            focusSection(section);
+          });
+          tools.appendChild(text);
+          tools.appendChild(btn);
+          head.appendChild(tools);
+        }
+        tools.firstChild.textContent = plural(n, 'non lu');
+      } else if (tools) tools.remove();
+    });
+
+    var total = unreadIn(document.querySelector('main')).length;
+    unreadBar.hidden = !total;
+    unreadTotal.textContent = total ? plural(total, 'nouveauté') + ' non lue' + (total > 1 ? 's' : '') : '';
+  }
+
+  if (seen !== undefined) {
+    var now = Date.now();
+    // Première visite sur ce navigateur : l'historique existant vaut pour lu,
+    // seules les nouveautés à venir seront signalées.
+    var firstVisit = !seen || typeof seen !== 'object';
+    if (firstVisit) seen = {};
+    document.querySelectorAll('main [data-unread]').forEach(function (el) {
+      var key = el.dataset.unread;
+      if (firstVisit || seen[key]) seen[key] = now;
+      else setUnread(el);
+    });
+    // Les clés absentes de la page depuis six mois ne servent plus.
+    Object.keys(seen).forEach(function (k) { if (now - seen[k] > KEEP) delete seen[k]; });
+    saveSeen();
+    renderUnread();
+
+    // Ouvrir un élément le marque comme lu (capture : avant les autres gestionnaires).
+    document.addEventListener('click', function (event) {
+      var el = event.target.closest && event.target.closest('.is-unread[data-unread]');
+      if (!el) return;
+      setRead(el);
+      saveSeen();
+      renderUnread();
+    }, true);
+
+    document.getElementById('unread-first').addEventListener('click', function () {
+      var items = unreadIn(document.querySelector('main'));
+      var el = items.filter(function (i) { return i.offsetParent !== null; })[0] || items[0];
+      if (!el) return;
+      var section = el.closest('section');
+      if (el.offsetParent === null) { if (section) { section.scrollIntoView(); focusSection(section); } return; }
+      el.scrollIntoView({ block: 'center' });
+      var target = el.matches('button, a') ? el : el.querySelector('button, a');
+      if (target) target.focus({ preventScroll: true });
+    });
+    document.getElementById('unread-all').addEventListener('click', function () {
+      unreadIn(document.querySelector('main')).forEach(setRead);
+      saveSeen();
+      renderUnread();
+      document.getElementById('contenu').focus();
+    });
   }
 
   var y = Number(store.get('scroll'));

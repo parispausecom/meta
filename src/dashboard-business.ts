@@ -74,12 +74,12 @@ function instagram(b: Business): string {
       const img = m.media_type === 'VIDEO' ? m.thumbnail_url : m.media_url;
       const type = m.media_type === 'VIDEO' ? 'Vidéo' : m.media_type === 'CAROUSEL_ALBUM' ? 'Carrousel' : 'Photo';
       const label = `${type} du ${day(m.timestamp)} : ${num(m.like_count)} j’aime, ${num(m.comments_count)} commentaires`;
-      return `<li><button type="button" class="post" data-panel="instagram" data-id="${esc(m.id)}"
+      return `<li><button type="button" class="post" data-panel="instagram" data-id="${esc(m.id)}" data-unread="ig-post:${esc(m.id)}"
           data-title="${esc(type)} du ${esc(day(m.timestamp))}" data-caption="${esc(m.caption ?? '')}" data-img="${esc(img ?? '')}"
           data-link="${esc(m.permalink ?? '')}" data-stats="${esc(`${num(m.like_count)} j’aime · ${num(m.comments_count)} commentaires`)}"
           aria-haspopup="dialog" aria-label="${esc(label)}">
         ${img ? `<img src="${esc(img)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="noimg" aria-hidden="true"></span>'}
-        <span class="post-meta" aria-hidden="true"><span class="badge-type">${esc(type)}</span><span>♥ ${num(m.like_count)}</span><span>💬 ${num(m.comments_count)}</span></span>
+        <span class="post-meta" aria-hidden="true" data-unread-slot><span class="badge-type">${esc(type)}</span><span>♥ ${num(m.like_count)}</span><span>💬 ${num(m.comments_count)}</span></span>
         <span class="post-caption" aria-hidden="true">${esc(clip(m.caption, 90))}</span>
       </button></li>`;
     })
@@ -88,7 +88,7 @@ function instagram(b: Business): string {
   const mentions = b.mentions.ok ? b.mentions.data : [];
   const mentionRows = mentions
     .map(
-      (m) => `<tr>
+      (m) => `<tr data-unread="ig-mention:${esc(m.id)}">
         <td data-label="Date" class="c-date"><time datetime="${esc(m.timestamp ?? '')}">${day(m.timestamp)}</time></td>
         <th scope="row" data-label="Compte">@${esc(m.username ?? '—')}</th>
         <td data-label="Publication">${esc(clip(m.caption, 140) || '—')}</td>
@@ -139,12 +139,12 @@ function facebook(b: Business): string {
       const c = m.comments?.summary?.total_count ?? 0;
       const sh = m.shares?.count ?? 0;
       const stats = `${num(r)} réactions · ${num(c)} commentaires · ${num(sh)} partages`;
-      return `<li><button type="button" class="post" data-panel="facebook" data-id="${esc(m.id)}"
+      return `<li><button type="button" class="post" data-panel="facebook" data-id="${esc(m.id)}" data-unread="fb-post:${esc(m.id)}"
           data-title="Publication du ${esc(day(m.created_time))}" data-caption="${esc(m.message ?? '')}" data-img="${esc(m.full_picture ?? '')}"
           data-link="${esc(m.permalink_url ?? '')}" data-stats="${esc(stats)}" aria-haspopup="dialog"
           aria-label="${esc(`Publication du ${day(m.created_time)} : ${stats}`)}">
         ${m.full_picture ? `<img src="${esc(m.full_picture)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : `<span class="noimg text" aria-hidden="true">${esc(clip(m.message, 120))}</span>`}
-        <span class="post-meta" aria-hidden="true"><span>👍 ${num(r)}</span><span>💬 ${num(c)}</span><span>↗ ${num(sh)}</span></span>
+        <span class="post-meta" aria-hidden="true" data-unread-slot><span>👍 ${num(r)}</span><span>💬 ${num(c)}</span><span>↗ ${num(sh)}</span></span>
         <span class="post-caption" aria-hidden="true">${esc(clip(m.message, 90))}</span>
       </button></li>`;
     })
@@ -153,8 +153,8 @@ function facebook(b: Business): string {
   const ratings = b.ratings.ok ? b.ratings.data : [];
   const reviews = ratings
     .map(
-      (r) => `<li class="card review">
-        <p class="review-head"><strong>${esc(r.reviewer?.name ?? 'Utilisateur Facebook')}</strong>
+      (r) => `<li class="card review" data-unread="fb-avis:${esc(r.created_time ?? '')}:${esc(r.reviewer?.name ?? '')}">
+        <p class="review-head" data-unread-slot><strong>${esc(r.reviewer?.name ?? 'Utilisateur Facebook')}</strong>
         <span class="status ${r.recommendation_type === 'negative' ? 'status-ko' : 'status-ok'}">${r.recommendation_type === 'negative' ? 'Ne recommande pas' : 'Recommande'}</span>
         <time class="muted" datetime="${esc(r.created_time ?? '')}">${day(r.created_time)}</time></p>
         <details><summary>Lire l’avis</summary><p class="review-text">${esc(r.review_text ?? 'Sans commentaire.')}</p></details>
@@ -180,7 +180,8 @@ function messages(b: Business): string {
   const rows = convs
     .map((c) => {
       const who = (c.participants?.data ?? []).find((x) => x.id !== pageId)?.name ?? 'Contact';
-      return `<tr data-conv="${esc(c.id)}">
+      // La clé change à chaque nouvel échange : la conversation redevient non lue.
+      return `<tr data-conv="${esc(c.id)}" data-unread="conv:${esc(c.id)}:${esc(c.updated_time ?? '')}">
         <td data-label="Dernier échange" class="c-date"><time datetime="${esc(c.updated_time ?? '')}">${dayTime(c.updated_time)}</time></td>
         <th scope="row" data-label="Contact"><button type="button" class="link" data-panel="thread" data-id="${esc(c.id)}" data-title="${esc(who)}" aria-haspopup="dialog">${esc(who)}</button></th>
         <td data-label="Aperçu">${esc(clip(c.snippet, 110) || '—')}</td>
@@ -270,7 +271,8 @@ function prospection(b: Business): string {
           : canReplyPrivately(p)
           ? `<button type="button" class="copy primary-btn" data-reply="${esc(p.Compte)}" data-source="msg-${i}">Envoyer en réponse privée<span class="sr-only"> à @${esc(p.Compte)}</span></button>`
           : `<span class="muted prospect-reason">${p.Commentaire ? 'Commentaire de plus de 7 jours' : 'Pas de commentaire récent'} : envoi à la main depuis Instagram.</span>`;
-      return `<tr>
+      // Un changement de statut (qualifié, message prêt, réponse…) refait apparaître la ligne.
+      return `<tr data-unread="prospect:${esc(p.Compte)}:${esc(p.Statut)}">
         <td data-label="Score" class="c-score">${esc(p.Score || '—')}<span class="sr-only"> sur 100</span></td>
         <th scope="row" data-label="Compte">${profile(p)}${p.Nom ? `<span class="muted prospect-name">${esc(clip(p.Nom, 40))}</span>` : ''}</th>
         <td data-label="Secteur">${esc(p.Secteur || '—')}</td>
